@@ -1,7 +1,7 @@
 fastapi
 uvicorn
-fastapi-mcp
+mcp>=1.2.0
 httpx
-apscheduler
 python-dotenv
 pydantic
+sse-starlette
