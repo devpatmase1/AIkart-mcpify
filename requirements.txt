@@ -1,6 +1,6 @@
 fastapi
 uvicorn
-mcp>=1.2.0
+mcp>=1.2.0,<2.0.0
 httpx
 python-dotenv
 pydantic
