@@ -3,7 +3,6 @@ import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
 import httpx
 from dotenv import load_dotenv
 
@@ -11,6 +10,10 @@ from app.mcp_handler import router as mcp_router, mcp
 
 # Load environment variables
 load_dotenv()
+
+# Pre-initialize FastMCP ASGI apps (SSE transport & Streamable HTTP transport)
+sse_app = mcp.sse_app()
+http_app = mcp.streamable_http_app()
 
 
 async def ping_keep_alive():
@@ -39,19 +42,22 @@ async def keep_alive_worker():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: start keep-alive background worker
+    # Startup: launch keep-alive background worker
     worker_task = asyncio.create_task(keep_alive_worker())
     print("[MCPify] Keep-alive background worker initialized (interval: 10 mins).")
     
-    yield
-    
+    # Startup: enter FastMCP streamable HTTP session manager
+    async with mcp.session_manager.run():
+        print("[MCPify] FastMCP Streamable HTTP session manager active.")
+        yield
+
     # Shutdown: stop worker gracefully
     worker_task.cancel()
     try:
         await worker_task
     except asyncio.CancelledError:
         pass
-    print("[MCPify] Keep-alive worker stopped.")
+    print("[MCPify] Keep-alive worker and MCP session manager stopped.")
 
 
 # Initialize FastAPI application
@@ -60,13 +66,13 @@ app = FastAPI(
     description=(
         "Analyze any AI agent URL, detect framework signatures, "
         "and generate ready-to-use Model Context Protocol (MCP) configs. "
-        "Exposes its own /mcp endpoint for instant MCP integration."
+        "Exposes dual-mode MCP endpoints: SSE (/mcp/sse) and Streamable HTTP (/mcp)."
     ),
     version="1.0.0",
     lifespan=lifespan
 )
 
-# CORS enabled for all origins
+# CORS enabled for all origins and headers
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -75,10 +81,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include REST endpoints (/analyze, /generate, /guide)
-app.include_router(mcp_router)
-
-
+# 1. Health check & Root discovery endpoints
 @app.get("/health", summary="Health Check")
 async def health_check():
     """Health check endpoint returning service status."""
@@ -90,11 +93,23 @@ async def root():
     """Landing endpoint with API discovery details."""
     return {
         "service": "MCPify",
-        "description": "AI Agent URL Analyzer & MCP Config Generator",
+        "description": "AI Agent URL Analyzer & Dual-Mode MCP Server",
         "version": "1.0.0",
-        "endpoints": {
+        "mcp_endpoints": {
+            "streamable_http": {
+                "method": "POST",
+                "path": "/mcp",
+                "transport": "HTTP Streamable (MCP 2024-11 standard)"
+            },
+            "sse_transport": {
+                "method": "GET",
+                "path": "/mcp/sse",
+                "messages_path": "/mcp/messages",
+                "transport": "Server-Sent Events (SSE)"
+            }
+        },
+        "rest_endpoints": {
             "health": "/health",
-            "mcp_server": "/mcp/sse",
             "analyze_agent": "/analyze",
             "generate_config": "/generate",
             "integration_guide": "/guide",
@@ -103,15 +118,14 @@ async def root():
     }
 
 
-# Convenience redirect from /mcp to /mcp/sse for clients querying /mcp
-@app.get("/mcp", summary="MCP Server SSE Redirect")
-async def mcp_redirect():
-    """Redirects to the active MCP SSE streaming endpoint."""
-    return RedirectResponse(url="/mcp/sse", status_code=307)
+# 2. Include REST routes (/analyze, /generate, /guide)
+app.include_router(mcp_router)
 
+# 3. Mount SSE transport at /mcp (exposes GET /mcp/sse and POST /mcp/messages)
+app.mount("/mcp", sse_app)
 
-# Mount the official Anthropic MCP SSE app at /mcp
-app.mount("/mcp", mcp.sse_app())
+# 4. Mount Streamable HTTP transport at root (exposes POST /mcp, GET /mcp, DELETE /mcp)
+app.mount("", http_app)
 
 
 if __name__ == "__main__":
