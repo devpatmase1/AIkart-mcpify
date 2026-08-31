@@ -352,9 +352,12 @@ async def proxy_mcp_messages_endpoint(
 # 3. Include REST routes (/analyze, /generate, /guide)
 app.include_router(mcp_router)
 
-# 4. Expose all FastAPI /api/ & REST endpoints as MCP tools via FastApiMCP
+# 4. Expose all FastAPI /api/ & REST endpoints as MCP tools via FastApiMCP at /mcp-server
 fastapi_mcp = FastApiMCP(app, name="DataHub Talk to Data")
-fastapi_mcp.mount()
+fastapi_mcp.mount_sse(mount_path="/mcp-server/sse")
+fastapi_mcp.mount_http(mount_path="/mcp-server/mcp")
+fastapi_mcp.mount(mount_path="/mcp-server")
+
 
 
 # 5. Mount SSE transport at /mcp (exposes GET /mcp/sse and POST /mcp/messages)
