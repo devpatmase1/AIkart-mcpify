@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import httpx
 from dotenv import load_dotenv
 
+from fastapi.responses import FileResponse, HTMLResponse
+
 from app.mcp_handler import router as mcp_router, mcp
 
 # Load environment variables
@@ -81,15 +83,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 1. Health check & Root discovery endpoints
+# 1. Health check & Web UI / Root endpoints
 @app.get("/health", summary="Health Check")
 async def health_check():
     """Health check endpoint returning service status."""
     return {"status": "ok"}
 
 
-@app.get("/", summary="Root Index")
+@app.get("/", summary="MCPify Web Interface", response_class=HTMLResponse)
 async def root():
+    """Serves the MCPify Web UI frontend."""
+    html_path = os.path.join(os.path.dirname(__file__), "app", "web", "index.html")
+    if os.path.exists(html_path):
+        return FileResponse(html_path)
+    return HTMLResponse("<h1>MCPify API Running</h1>")
+
+
+@app.get("/api", summary="Root Discovery Index")
+async def api_info():
     """Landing endpoint with API discovery details."""
     return {
         "service": "MCPify",

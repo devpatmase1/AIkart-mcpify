@@ -1,0 +1,1141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MCPify — Model Context Protocol Bridge & Config Generator</title>
+  <meta name="description" content="Turn any deployed AI Agent or REST API into a standardized Model Context Protocol (MCP) server for Claude Desktop, Cursor, and VS Code.">
+  
+  <!-- Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;1,400&display=swap" rel="stylesheet">
+
+  <style>
+    /* ---------------------------------------------------------
+       CSS DESIGN SYSTEM & TOKENS (GitHub Dark + Cyan Electric Accent)
+       --------------------------------------------------------- */
+    :root {
+      --bg-canvas: #0D1117;
+      --bg-card: #161B22;
+      --bg-card-hover: #1C2128;
+      --bg-input: #0D1117;
+      --bg-tertiary: #21262D;
+      
+      --border-subtle: #30363D;
+      --border-accent: #00F0FF;
+      --border-hover: #8B949E;
+      
+      --accent-cyan: #00F0FF;
+      --accent-blue: #0066FF;
+      --accent-gradient: linear-gradient(135deg, #00F0FF 0%, #0066FF 100%);
+      --accent-glow: rgba(0, 240, 255, 0.2);
+      --accent-glow-strong: rgba(0, 240, 255, 0.4);
+      
+      --text-primary: #F0F6FC;
+      --text-secondary: #8B949E;
+      --text-dim: #6E7681;
+      --text-link: #58A6FF;
+      
+      --code-bg: #0A0D12;
+      --code-green: #7EE787;
+      --code-cyan: #79C0FF;
+      --code-purple: #D2A8FF;
+      --code-orange: #FFA657;
+      
+      --status-green: #3FB950;
+      --status-yellow: #D29922;
+      --status-red: #F85149;
+      
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --radius-full: 9999px;
+      
+      --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.5);
+      --shadow-glow: 0 0 25px rgba(0, 240, 255, 0.15);
+      
+      --transition-fast: 0.15s ease;
+      --transition-normal: 0.25s ease;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-canvas);
+      color: var(--text-primary);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.08) 0%, transparent 50%),
+        radial-gradient(circle at 100% 100%, rgba(0, 102, 255, 0.05) 0%, transparent 40%);
+      background-attachment: fixed;
+    }
+
+    .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    a {
+      color: var(--text-link);
+      text-decoration: none;
+      transition: color var(--transition-fast);
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    /* Layout Containers */
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+      width: 100%;
+    }
+
+    /* Navbar */
+    .navbar {
+      border-bottom: 1px solid var(--border-subtle);
+      background: rgba(13, 17, 23, 0.85);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 16px 0;
+    }
+
+    .navbar-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 700;
+      font-size: 1.25rem;
+      color: var(--text-primary);
+      letter-spacing: -0.5px;
+    }
+
+    .brand-icon {
+      width: 34px;
+      height: 34px;
+      background: var(--accent-gradient);
+      border-radius: var(--radius-sm);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #000;
+      font-size: 1.1rem;
+      font-weight: 900;
+      box-shadow: 0 0 15px var(--accent-glow);
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+    }
+
+    .nav-link {
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .nav-link:hover {
+      color: var(--accent-cyan);
+      text-decoration: none;
+    }
+
+    .badge-status {
+      background: rgba(63, 185, 80, 0.1);
+      color: var(--status-green);
+      border: 1px solid rgba(63, 185, 80, 0.3);
+      padding: 4px 10px;
+      border-radius: var(--radius-full);
+      font-size: 0.75rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .badge-status::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      background: var(--status-green);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--status-green);
+    }
+
+    /* Main Section */
+    main {
+      flex: 1;
+      padding: 48px 0;
+    }
+
+    /* Hero Section */
+    .hero {
+      text-align: center;
+      max-width: 800px;
+      margin: 0 auto 48px auto;
+    }
+
+    .hero-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(0, 240, 255, 0.08);
+      border: 1px solid rgba(0, 240, 255, 0.25);
+      color: var(--accent-cyan);
+      padding: 6px 16px;
+      border-radius: var(--radius-full);
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.1);
+    }
+
+    .hero h1 {
+      font-size: 2.75rem;
+      font-weight: 800;
+      letter-spacing: -1px;
+      line-height: 1.2;
+      margin-bottom: 16px;
+      background: linear-gradient(180deg, #FFFFFF 0%, #8B949E 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero p {
+      font-size: 1.1rem;
+      color: var(--text-secondary);
+      max-width: 680px;
+      margin: 0 auto;
+    }
+
+    /* Agent URL Input Box */
+    .input-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: var(--shadow-card);
+      position: relative;
+      transition: border-color var(--transition-normal), box-shadow var(--transition-normal);
+      margin-bottom: 40px;
+    }
+
+    .input-card:focus-within {
+      border-color: var(--accent-cyan);
+      box-shadow: var(--shadow-card), var(--shadow-glow);
+    }
+
+    .input-group {
+      display: flex;
+      gap: 12px;
+      position: relative;
+    }
+
+    .url-input-wrapper {
+      position: relative;
+      flex: 1;
+      display: flex;
+      align-items: center;
+    }
+
+    .url-icon {
+      position: absolute;
+      left: 16px;
+      color: var(--text-dim);
+      font-size: 1.1rem;
+      pointer-events: none;
+    }
+
+    .url-input {
+      width: 100%;
+      background: var(--bg-input);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      padding: 16px 16px 16px 44px;
+      color: var(--text-primary);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.95rem;
+      transition: all var(--transition-fast);
+      outline: none;
+    }
+
+    .url-input:focus {
+      border-color: var(--accent-cyan);
+      background: #06090E;
+    }
+
+    .url-input::placeholder {
+      color: var(--text-dim);
+    }
+
+    .btn-submit {
+      background: var(--accent-gradient);
+      color: #000;
+      font-family: 'Inter', sans-serif;
+      font-weight: 700;
+      font-size: 0.95rem;
+      padding: 0 28px;
+      border-radius: var(--radius-md);
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      white-space: nowrap;
+      transition: transform var(--transition-fast), box-shadow var(--transition-fast), opacity var(--transition-fast);
+      box-shadow: 0 0 15px var(--accent-glow);
+    }
+
+    .btn-submit:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 0 25px var(--accent-glow-strong);
+    }
+
+    .btn-submit:active {
+      transform: translateY(0);
+    }
+
+    .btn-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    /* Preset Chips */
+    .presets {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 16px;
+      flex-wrap: wrap;
+    }
+
+    .presets-label {
+      font-size: 0.8rem;
+      color: var(--text-dim);
+      font-weight: 500;
+    }
+
+    .chip {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      padding: 4px 12px;
+      border-radius: var(--radius-full);
+      font-size: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+    }
+
+    .chip:hover {
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+      background: rgba(0, 240, 255, 0.05);
+    }
+
+    /* Loading State */
+    .loading-card {
+      display: none;
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 40px 24px;
+      text-align: center;
+      margin-bottom: 40px;
+    }
+
+    .spinner {
+      width: 44px;
+      height: 44px;
+      border: 3px solid rgba(0, 240, 255, 0.15);
+      border-top-color: var(--accent-cyan);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 20px auto;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .loading-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .loading-desc {
+      color: var(--text-secondary);
+      font-size: 0.88rem;
+    }
+
+    /* Error Alert */
+    .error-card {
+      display: none;
+      background: rgba(248, 81, 73, 0.1);
+      border: 1px solid rgba(248, 81, 73, 0.3);
+      border-radius: var(--radius-md);
+      padding: 16px 20px;
+      margin-bottom: 32px;
+      color: #FF7B72;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .error-card-icon {
+      font-size: 1.2rem;
+      line-height: 1;
+    }
+
+    .error-card-content {
+      flex: 1;
+    }
+
+    .error-card-title {
+      font-weight: 700;
+      margin-bottom: 2px;
+    }
+
+    /* Results Card */
+    .results-wrapper {
+      display: none;
+      animation: fadeIn 0.3s ease forwards;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Analysis Summary Bar */
+    .analysis-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      margin-bottom: 32px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 20px;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: var(--shadow-card);
+    }
+
+    .analysis-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+
+    .meta-item {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .meta-label {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
+    .meta-value {
+      font-size: 0.95rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge-framework {
+      background: rgba(0, 240, 255, 0.1);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(0, 240, 255, 0.3);
+      padding: 4px 12px;
+      border-radius: var(--radius-sm);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      font-weight: 600;
+    }
+
+    .badge-confidence {
+      background: rgba(126, 231, 135, 0.1);
+      color: var(--code-green);
+      border: 1px solid rgba(126, 231, 135, 0.3);
+      padding: 4px 10px;
+      border-radius: var(--radius-sm);
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+
+    .endpoint-pill {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      padding: 8px 14px;
+      border-radius: var(--radius-md);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    /* Tabs Component */
+    .config-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      box-shadow: var(--shadow-card);
+      margin-bottom: 32px;
+    }
+
+    .tab-bar {
+      display: flex;
+      background: #11151C;
+      border-bottom: 1px solid var(--border-subtle);
+      padding: 0 16px;
+      gap: 8px;
+      overflow-x: auto;
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 16px 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      position: relative;
+      transition: color var(--transition-fast);
+      white-space: nowrap;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-primary);
+    }
+
+    .tab-btn.active {
+      color: var(--accent-cyan);
+    }
+
+    .tab-btn.active::after {
+      content: "";
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--accent-cyan);
+      box-shadow: 0 0 10px var(--accent-cyan);
+    }
+
+    /* Code Container */
+    .code-container {
+      position: relative;
+      background: var(--code-bg);
+    }
+
+    .code-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.78rem;
+      color: var(--text-dim);
+    }
+
+    .btn-copy {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all var(--transition-fast);
+    }
+
+    .btn-copy:hover {
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+      background: rgba(0, 240, 255, 0.08);
+    }
+
+    .btn-copy.copied {
+      background: rgba(63, 185, 80, 0.15);
+      border-color: var(--status-green);
+      color: var(--status-green);
+    }
+
+    pre {
+      padding: 20px;
+      overflow-x: auto;
+      margin: 0;
+    }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.88rem;
+      color: var(--text-primary);
+      line-height: 1.5;
+    }
+
+    /* Integration Guide Section */
+    .guide-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+      box-shadow: var(--shadow-card);
+    }
+
+    .guide-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .guide-steps {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .guide-step {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      color: var(--accent-cyan);
+      font-weight: 700;
+      font-size: 0.85rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .step-text {
+      font-size: 0.92rem;
+      color: var(--text-secondary);
+    }
+
+    .location-badge {
+      display: block;
+      margin-top: 6px;
+      background: var(--code-bg);
+      border: 1px solid var(--border-subtle);
+      padding: 6px 12px;
+      border-radius: var(--radius-sm);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--code-cyan);
+      width: fit-content;
+    }
+
+    /* Features Grid */
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 24px;
+      margin-top: 64px;
+    }
+
+    .feature-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-lg);
+      padding: 28px;
+      transition: border-color var(--transition-fast), transform var(--transition-fast);
+    }
+
+    .feature-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-2px);
+    }
+
+    .feature-icon {
+      width: 44px;
+      height: 44px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border-subtle);
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      margin-bottom: 16px;
+      color: var(--accent-cyan);
+    }
+
+    .feature-card h3 {
+      font-size: 1.05rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .feature-card p {
+      font-size: 0.88rem;
+      color: var(--text-secondary);
+    }
+
+    /* Footer */
+    footer {
+      border-top: 1px solid var(--border-subtle);
+      padding: 32px 0;
+      margin-top: 64px;
+      background: var(--bg-card);
+      font-size: 0.85rem;
+      color: var(--text-dim);
+    }
+
+    .footer-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    /* Responsive Design */
+    @media (max-width: 768px) {
+      .hero h1 {
+        font-size: 2rem;
+      }
+
+      .input-group {
+        flex-direction: column;
+      }
+
+      .btn-submit {
+        padding: 14px 20px;
+        justify-content: center;
+      }
+
+      .analysis-card {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .navbar-inner {
+        flex-direction: column;
+        gap: 12px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="navbar">
+    <div class="container navbar-inner">
+      <div class="brand">
+        <div class="brand-icon">⚡</div>
+        <span>MCPify</span>
+      </div>
+      <div class="nav-links">
+        <span class="badge-status">API Operational</span>
+        <a href="/docs" target="_blank" class="nav-link">Swagger Docs</a>
+        <a href="/health" target="_blank" class="nav-link">Health</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Body -->
+  <main>
+    <div class="container">
+
+      <!-- Hero Section -->
+      <section class="hero">
+        <div class="hero-tag">⚡ Model Context Protocol Bridge</div>
+        <h1>Generate MCP links for any AI Agent</h1>
+        <p>Turn any deployed agent or REST API into a standardized MCP server for Claude Desktop, Cursor, and VS Code in seconds.</p>
+      </section>
+
+      <!-- Input Card -->
+      <section class="input-card">
+        <form id="mcpForm" onsubmit="handleGenerate(event)">
+          <div class="input-group">
+            <div class="url-input-wrapper">
+              <span class="url-icon">🌐</span>
+              <input 
+                type="url" 
+                id="agentUrl" 
+                class="url-input" 
+                placeholder="Paste your deployed agent URL here... (e.g. https://my-agent.onrender.com)" 
+                required 
+                autocomplete="off"
+              />
+            </div>
+            <button type="submit" id="submitBtn" class="btn-submit">
+              <span>Generate MCP Config</span>
+              <span id="btnIcon">⚡</span>
+            </button>
+          </div>
+        </form>
+
+        <div class="presets">
+          <span class="presets-label">Try example:</span>
+          <button type="button" class="chip" onclick="fillUrl('http://127.0.0.1:10000')">Localhost (MCPify Self-Probe)</button>
+          <button type="button" class="chip" onclick="fillUrl('https://fastapi.tiangolo.com')">FastAPI Docs</button>
+          <button type="button" class="chip" onclick="fillUrl('https://httpbin.org')">httpbin.org</button>
+        </div>
+      </section>
+
+      <!-- Error State -->
+      <div id="errorCard" class="error-card" style="display: none;">
+        <div class="error-card-icon">⚠️</div>
+        <div class="error-card-content">
+          <div class="error-card-title">Analysis Failed</div>
+          <div id="errorMessage">Unable to probe the provided URL. Please verify the URL is accessible.</div>
+        </div>
+      </div>
+
+      <!-- Loading State -->
+      <div id="loadingCard" class="loading-card">
+        <div class="spinner"></div>
+        <div class="loading-title">Probing AI Agent & Detecting Framework...</div>
+        <div class="loading-desc">Scanning common paths (/mcp, /sse, /health, /openapi.json) for MCP capability.</div>
+      </div>
+
+      <!-- Results Container -->
+      <div id="resultsWrapper" class="results-wrapper">
+
+        <!-- Analysis Meta Card -->
+        <div class="analysis-card">
+          <div class="analysis-meta">
+            <div class="meta-item">
+              <span class="meta-label">Detected Framework</span>
+              <div class="meta-value">
+                <span id="frameworkBadge" class="badge-framework">FastAPI</span>
+                <span id="confidenceBadge" class="badge-confidence">99% Confidence</span>
+              </div>
+            </div>
+
+            <div class="meta-item">
+              <span class="meta-label">Target URL</span>
+              <div id="targetUrlDisplay" class="meta-value mono" style="font-size: 0.88rem; color: var(--text-secondary);">
+                https://my-agent.onrender.com
+              </div>
+            </div>
+          </div>
+
+          <div class="meta-item">
+            <span class="meta-label">Recommended Remote MCP Endpoint</span>
+            <div class="endpoint-pill">
+              <span id="mcpEndpointDisplay">https://my-agent.onrender.com/mcp</span>
+              <button class="btn-copy" onclick="copyText('mcpEndpointDisplay', this)" style="padding: 4px 10px; font-size: 0.75rem;">Copy</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tabs & Config Viewer -->
+        <div class="config-card">
+          <div class="tab-bar">
+            <button class="tab-btn active" id="tab-claude" onclick="switchTab('claude_desktop')">
+              <span>🤖 Claude Desktop</span>
+            </button>
+            <button class="tab-btn" id="tab-cursor" onclick="switchTab('cursor_vscode')">
+              <span>⚡ Cursor / VS Code</span>
+            </button>
+            <button class="tab-btn" id="tab-remote" onclick="switchTab('remote_url')">
+              <span>🌐 Remote URL (REST)</span>
+            </button>
+          </div>
+
+          <div class="code-container">
+            <div class="code-header">
+              <span id="configLangLabel">JSON — Configuration Snippet</span>
+              <button id="copyConfigBtn" class="btn-copy" onclick="copyCurrentConfig(this)">
+                <span>📋 Copy Config</span>
+              </button>
+            </div>
+            <pre><code id="codeBlock">// Configuration will appear here...</code></pre>
+          </div>
+        </div>
+
+        <!-- Integration Guide Steps -->
+        <div class="guide-card">
+          <div class="guide-title">
+            <span>📖 Step-by-Step Integration Guide</span>
+            <span id="guidePlatformBadge" class="badge-framework" style="font-size: 0.75rem;">Claude Desktop</span>
+          </div>
+
+          <div id="guideStepsContainer" class="guide-steps">
+            <!-- Dynamic guide steps inserted here -->
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Features Grid -->
+      <section class="features-grid">
+        <div class="feature-card">
+          <div class="feature-icon">🔍</div>
+          <h3>Auto-Signature Detection</h3>
+          <p>Scans endpoints for FastAPI, LangChain/LangServe, Flask, Express, and Next.js markers automatically with confidence scoring.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🔌</div>
+          <h3>Dual-Transport MCP</h3>
+          <p>Supports both HTTP Streamable (MCP 2024-11 standard) and Server-Sent Events (SSE) for maximum client compatibility.</p>
+        </div>
+
+        <div class="feature-card">
+          <div class="feature-icon">🛠️</div>
+          <h3>Zero-Config Integration</h3>
+          <p>Instant ready-to-paste JSON configurations and setup instructions tailored for Claude Desktop, Cursor, and VS Code.</p>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container footer-inner">
+      <div>
+        <strong>MCPify</strong> — Model Context Protocol Bridge & Config Generator
+      </div>
+      <div>
+        Built with FastAPI & FastMCP &bull; <a href="/docs" target="_blank">OpenAPI Specs</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Script Logic -->
+  <script>
+    // State storage
+    let currentData = null;
+    let activeTab = 'claude_desktop';
+
+    function fillUrl(url) {
+      document.getElementById('agentUrl').value = url;
+    }
+
+    async function handleGenerate(e) {
+      e.preventDefault();
+      const inputEl = document.getElementById('agentUrl');
+      const submitBtn = document.getElementById('submitBtn');
+      const loadingCard = document.getElementById('loadingCard');
+      const resultsWrapper = document.getElementById('resultsWrapper');
+      const errorCard = document.getElementById('errorCard');
+
+      let targetUrl = inputEl.value.trim();
+      if (!targetUrl) return;
+
+      // Auto add https if protocol omitted
+      if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+        targetUrl = 'https://' + targetUrl;
+        inputEl.value = targetUrl;
+      }
+
+      // UI Loading state
+      submitBtn.disabled = true;
+      submitBtn.querySelector('span').innerText = 'Analyzing...';
+      loadingCard.style.display = 'block';
+      resultsWrapper.style.display = 'none';
+      errorCard.style.display = 'none';
+
+      try {
+        const response = await fetch('/generate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: targetUrl })
+        });
+
+        if (!response.ok) {
+          const errData = await response.json();
+          throw new Error(errData.detail || 'Failed to analyze target URL');
+        }
+
+        const data = await response.json();
+        currentData = data;
+
+        // Render Results
+        renderResults(data);
+        loadingCard.style.display = 'none';
+        resultsWrapper.style.display = 'block';
+
+      } catch (err) {
+        loadingCard.style.display = 'none';
+        errorCard.style.display = 'flex';
+        document.getElementById('errorMessage').innerText = err.message || 'An error occurred while connecting to the agent endpoint.';
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.querySelector('span').innerText = 'Generate MCP Config';
+      }
+    }
+
+    function renderResults(data) {
+      const analysis = data.analysis;
+      const configs = data.configs;
+
+      // Analysis Meta
+      document.getElementById('frameworkBadge').innerText = analysis.detected_framework;
+      document.getElementById('confidenceBadge').innerText = `${Math.round(analysis.confidence_score * 100)}% Confidence`;
+      document.getElementById('targetUrlDisplay').innerText = analysis.url;
+      document.getElementById('mcpEndpointDisplay').innerText = configs.remote_mcp_url;
+
+      // Set active tab default
+      switchTab(activeTab);
+    }
+
+    function switchTab(tab) {
+      activeTab = tab;
+      if (!currentData) return;
+
+      const configs = currentData.configs;
+
+      // Tab Buttons highlight
+      document.getElementById('tab-claude').classList.toggle('active', tab === 'claude_desktop');
+      document.getElementById('tab-cursor').classList.toggle('active', tab === 'cursor_vscode');
+      document.getElementById('tab-remote').classList.toggle('active', tab === 'remote_url');
+
+      const codeBlock = document.getElementById('codeBlock');
+      const guideContainer = document.getElementById('guideStepsContainer');
+      const platformBadge = document.getElementById('guidePlatformBadge');
+
+      if (tab === 'claude_desktop') {
+        codeBlock.innerText = JSON.stringify(configs.claude_desktop, null, 2);
+        platformBadge.innerText = 'Claude Desktop';
+        renderGuideSteps([
+          { text: "Open your Claude Desktop configuration file.", location: getPlatformConfigLocation('claude_desktop') },
+          { text: "Add the generated server config under the 'mcpServers' object key." },
+          { text: "Restart Claude Desktop completely." },
+          { text: "Verify the hammer (🛠️) icon appears in the bottom right corner of Claude chat." }
+        ]);
+      } else if (tab === 'cursor_vscode') {
+        codeBlock.innerText = JSON.stringify(configs.cursor_vscode, null, 2);
+        platformBadge.innerText = 'Cursor / VS Code';
+        renderGuideSteps([
+          { text: "Open Cursor Settings (Cmd+, or Ctrl+,) or VS Code workspace settings." },
+          { text: "Navigate to Features > MCP." },
+          { text: `Click 'Add New MCP Server'. Name: '${configs.server_name}', Type: 'sse', URL: '${configs.remote_mcp_url}'.` },
+          { text: "Verify the green active status indicator indicator lights up." }
+        ]);
+      } else if (tab === 'remote_url') {
+        const remoteInfo = {
+          remote_mcp_url: configs.remote_mcp_url,
+          transport: "Model Context Protocol (JSON-RPC 2.0 over HTTP/SSE)",
+          supported_methods: ["tools/list", "tools/call", "ping", "initialize"]
+        };
+        codeBlock.innerText = JSON.stringify(remoteInfo, null, 2);
+        platformBadge.innerText = 'Remote REST URL';
+        renderGuideSteps([
+          { text: `Connect via HTTP/SSE transport to: ${configs.remote_mcp_url}` },
+          { text: "Send JSON-RPC 'initialize' request to establish MCP session capability." },
+          { text: "Execute tools via 'tools/call' with required arguments in JSON format." }
+        ]);
+      }
+    }
+
+    function getPlatformConfigLocation(platform) {
+      if (navigator.platform.indexOf('Mac') !== -1) {
+        return '~/Library/Application Support/Claude/claude_desktop_config.json';
+      } else if (navigator.platform.indexOf('Win') !== -1) {
+        return '%APPDATA%\\Claude\\claude_desktop_config.json';
+      }
+      return '~/.config/Claude/claude_desktop_config.json';
+    }
+
+    function renderGuideSteps(steps) {
+      const container = document.getElementById('guideStepsContainer');
+      container.innerHTML = steps.map((step, i) => `
+        <div class="guide-step">
+          <div class="step-num">${i + 1}</div>
+          <div class="step-text">
+            ${step.text}
+            ${step.location ? `<span class="location-badge">${step.location}</span>` : ''}
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function copyText(elementId, btnEl) {
+      const text = document.getElementById(elementId).innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        const origText = btnEl.innerText;
+        btnEl.innerText = '✓ Copied';
+        btnEl.classList.add('copied');
+        setTimeout(() => {
+          btnEl.innerText = origText;
+          btnEl.classList.remove('copied');
+        }, 2000);
+      });
+    }
+
+    function copyCurrentConfig(btnEl) {
+      const text = document.getElementById('codeBlock').innerText;
+      navigator.clipboard.writeText(text).then(() => {
+        const span = btnEl.querySelector('span');
+        const origText = span.innerText;
+        span.innerText = '✓ Copied Config!';
+        btnEl.classList.add('copied');
+        setTimeout(() => {
+          span.innerText = origText;
+          btnEl.classList.remove('copied');
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>
