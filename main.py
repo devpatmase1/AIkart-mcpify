@@ -358,17 +358,32 @@ fastapi_mcp.mount_sse(mount_path="/mcp-server/sse")
 fastapi_mcp.mount_http(mount_path="/mcp-server/mcp")
 fastapi_mcp.mount(mount_path="/mcp-server")
 
-
-
 # 5. Mount SSE transport at /mcp (exposes GET /mcp/sse and POST /mcp/messages)
 app.mount("/mcp", sse_app)
 
-# 6. Mount Streamable HTTP transport at root (exposes POST /mcp, GET /mcp, DELETE /mcp)
-app.mount("", http_app)
+# 6. Frontend Catch-All Route (AFTER all API & MCP routes)
+@app.get("/{full_path:path}", response_class=HTMLResponse, include_in_schema=False)
+async def serve_frontend_catch_all(full_path: str):
+    """
+    Catch-all route serving frontend Web UI.
+    Excludes API, MCP, Proxy, Docs, and Health endpoints from matching HTML.
+    """
+    excluded_prefixes = [
+        "api", "mcp", "mcp-server", "proxy", "health",
+        "docs", "openapi.json", "redoc"
+    ]
+    first_segment = full_path.strip("/").split("/")[0].lower()
+    if first_segment in excluded_prefixes:
+        raise HTTPException(status_code=404, detail="Endpoint not found.")
 
+    html_path = os.path.join(os.path.dirname(__file__), "app", "web", "index.html")
+    if os.path.exists(html_path):
+        return FileResponse(html_path)
+    return HTMLResponse("<h1>MCPify API Running</h1>")
 
 
 if __name__ == "__main__":
     import uvicorn
     port = int(os.getenv("PORT", 10000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+
