@@ -46,12 +46,28 @@ class ProxyMCPManager:
         self.proxies[proxy_id] = proxy_data
         return proxy_data
 
-    def get_proxy(self, proxy_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieve proxy configuration by proxy ID."""
+    def get_proxy(self, proxy_id: str) -> Dict[str, Any]:
+        """Retrieve proxy configuration by proxy ID, auto-recreating if missing from memory."""
         proxy = self.proxies.get(proxy_id)
-        if proxy:
+        if not proxy:
+            app_url = self.get_base_app_url()
+            proxy_url = f"{app_url}/proxy/{proxy_id}/mcp"
+            now_str = datetime.now(timezone.utc).isoformat()
+            target_url = os.getenv("DEFAULT_PROXY_TARGET", "https://httpbin.org")
+            proxy = {
+                "proxy_id": proxy_id,
+                "proxy_url": proxy_url,
+                "target_url": target_url,
+                "has_mcp": False,
+                "created_at": now_str,
+                "last_used": now_str,
+                "status": "active"
+            }
+            self.proxies[proxy_id] = proxy
+        else:
             proxy["last_used"] = datetime.now(timezone.utc).isoformat()
         return proxy
+
 
     def list_proxies(self) -> List[Dict[str, Any]]:
         """Return list of all active proxies."""

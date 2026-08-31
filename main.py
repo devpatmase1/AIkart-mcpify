@@ -272,11 +272,10 @@ async def proxy_health_endpoint(proxy_id: str):
 
 
 @app.get("/proxy/{proxy_id}/mcp", summary="Proxy MCP SSE Endpoint")
+@app.get("/proxy/{proxy_id}/mcp/", summary="Proxy MCP SSE Endpoint (Trailing Slash)")
 async def proxy_mcp_sse_endpoint(proxy_id: str, request: Request):
     """SSE connection endpoint for proxy MCP clients."""
     proxy = proxy_manager.get_proxy(proxy_id)
-    if not proxy:
-        raise HTTPException(status_code=404, detail=f"Proxy ID '{proxy_id}' not found.")
 
     session_id = str(uuid.uuid4())
     queue = asyncio.Queue()
@@ -314,7 +313,20 @@ async def proxy_mcp_sse_endpoint(proxy_id: str, request: Request):
     return EventSourceResponse(event_generator())
 
 
+@app.post("/proxy/{proxy_id}/mcp", summary="Proxy MCP Streamable HTTP Endpoint")
+@app.post("/proxy/{proxy_id}/mcp/", summary="Proxy MCP Streamable HTTP Endpoint (Trailing Slash)")
+async def proxy_mcp_http_endpoint(
+    proxy_id: str,
+    payload: Dict[str, Any] = Body(...)
+):
+    """HTTP Streamable POST endpoint for proxy MCP clients."""
+    proxy = proxy_manager.get_proxy(proxy_id)
+    response_data = await proxy_manager.forward_request(proxy_id, payload)
+    return response_data
+
+
 @app.post("/proxy/{proxy_id}/messages", summary="Proxy MCP Message Handler")
+@app.post("/proxy/{proxy_id}/messages/", summary="Proxy MCP Message Handler (Trailing Slash)")
 async def proxy_mcp_messages_endpoint(
     proxy_id: str,
     session_id: str = Query(...),
@@ -322,8 +334,6 @@ async def proxy_mcp_messages_endpoint(
 ):
     """Receive JSON-RPC messages from MCP clients and push responses to SSE stream."""
     proxy = proxy_manager.get_proxy(proxy_id)
-    if not proxy:
-        raise HTTPException(status_code=404, detail=f"Proxy '{proxy_id}' not found.")
 
     session_queue = proxy_manager.sessions.get(session_id)
     if not session_queue:
@@ -334,6 +344,7 @@ async def proxy_mcp_messages_endpoint(
         await session_queue.put(response_data)
 
     return {"status": "accepted"}
+
 
 
 # 3. Include REST routes (/analyze, /generate, /guide)
