@@ -513,6 +513,56 @@
       gap: 12px;
     }
 
+    /* Proxy Banner */
+    .proxy-banner {
+      background: linear-gradient(135deg, rgba(0, 240, 255, 0.08) 0%, rgba(63, 185, 80, 0.08) 100%);
+      border: 1px solid rgba(0, 240, 255, 0.35);
+      border-radius: var(--radius-lg);
+      padding: 20px 24px;
+      margin-bottom: 28px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-shadow: 0 4px 20px rgba(0, 240, 255, 0.12);
+    }
+
+    .proxy-banner-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .proxy-banner-title {
+      font-weight: 700;
+      font-size: 1.05rem;
+      color: var(--accent-cyan);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge-proxy-active {
+      background: rgba(63, 185, 80, 0.15);
+      color: #7EE787;
+      border: 1px solid rgba(63, 185, 80, 0.4);
+      padding: 4px 14px;
+      border-radius: var(--radius-full);
+      font-size: 0.82rem;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .proxy-label {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      font-weight: 500;
+    }
+
+
     /* Tabs Component */
     .config-card {
       background: var(--bg-card);
@@ -858,8 +908,26 @@
       <!-- Results Container -->
       <div id="resultsWrapper" class="results-wrapper">
 
+        <!-- Proxy Banner Notice (shown when target has no native /mcp) -->
+        <div id="proxyBanner" class="proxy-banner" style="display: none;">
+          <div class="proxy-banner-header">
+            <div class="proxy-banner-title">
+              <span>⚡ No MCP endpoint detected — MCPify created a proxy for you!</span>
+            </div>
+            <span class="badge-proxy-active">Proxy Active ✅</span>
+          </div>
+          <div class="proxy-banner-body">
+            <span class="proxy-label">MCP Proxy URL:</span>
+            <div class="endpoint-pill" style="margin-top: 6px;">
+              <span id="proxyUrlDisplay" class="mono">https://aikart-mcpify.onrender.com/proxy/abc123/mcp</span>
+              <button class="btn-copy" onclick="copyText('proxyUrlDisplay', this)" style="padding: 4px 10px; font-size: 0.75rem;">Copy Proxy URL</button>
+            </div>
+          </div>
+        </div>
+
         <!-- Analysis Meta Card -->
         <div class="analysis-card">
+
           <div class="analysis-meta">
             <div class="meta-item">
               <span class="meta-label">Detected Framework</span>
@@ -1029,6 +1097,18 @@
       const analysis = data.analysis;
       const configs = data.configs;
 
+      // Check if proxy was created (has_mcp is false or proxy_url exists)
+      const proxyBanner = document.getElementById('proxyBanner');
+      const isProxy = analysis.has_mcp === false || Boolean(analysis.proxy_url || configs.proxy_url);
+
+      if (isProxy) {
+        proxyBanner.style.display = 'flex';
+        const pUrl = analysis.proxy_url || configs.proxy_url || configs.remote_mcp_url;
+        document.getElementById('proxyUrlDisplay').innerText = pUrl;
+      } else {
+        proxyBanner.style.display = 'none';
+      }
+
       // Analysis Meta
       document.getElementById('frameworkBadge').innerText = analysis.detected_framework;
       document.getElementById('confidenceBadge').innerText = `${Math.round(analysis.confidence_score * 100)}% Confidence`;
@@ -1038,6 +1118,7 @@
       // Set active tab default
       switchTab(activeTab);
     }
+
 
     function switchTab(tab) {
       activeTab = tab;

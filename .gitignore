@@ -44,3 +44,5 @@ venv.bak/
 *.swp
 *.swo
 .DS_Store
+scratch/
+

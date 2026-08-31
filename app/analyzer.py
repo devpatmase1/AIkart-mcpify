@@ -3,6 +3,8 @@ import re
 from typing import Dict, List, Any, Optional
 from urllib.parse import urlparse
 import httpx
+from app.proxy import proxy_manager
+
 
 
 COMMON_ENDPOINTS = [
@@ -215,13 +217,32 @@ async def analyze_agent_url(url: str) -> Dict[str, Any]:
         normalized_url, root_probe, endpoint_probes
     )
 
-    recommended_mcp = determine_recommended_mcp_endpoint(normalized_url, endpoint_probes)
+    mcp_probe = endpoint_probes.get("/mcp")
+    sse_probe = endpoint_probes.get("/sse")
+    has_mcp = bool(
+        (mcp_probe and (mcp_probe.get("accessible") or mcp_probe.get("status_code") in [200, 400, 405])) or
+        (sse_probe and (sse_probe.get("accessible") or sse_probe.get("status_code") in [200, 400, 405]))
+    )
+
+    if has_mcp:
+        recommended_mcp = determine_recommended_mcp_endpoint(normalized_url, endpoint_probes)
+        proxy_url = None
+        proxy_id = None
+    else:
+        proxy = proxy_manager.create_proxy(target_url=normalized_url, has_mcp=False)
+        proxy_url = proxy["proxy_url"]
+        proxy_id = proxy["proxy_id"]
+        recommended_mcp = proxy_url
 
     return {
         "url": normalized_url,
         "detected_framework": detected_framework,
         "confidence_score": confidence_score,
         "available_endpoints": available_endpoints,
+        "has_mcp": has_mcp,
         "recommended_mcp_endpoint": recommended_mcp,
+        "proxy_url": proxy_url,
+        "proxy_id": proxy_id,
         "details": details
     }
+

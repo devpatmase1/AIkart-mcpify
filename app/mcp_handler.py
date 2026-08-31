@@ -66,7 +66,8 @@ async def run_generation(url: str) -> Dict[str, Any]:
     configs = generate_mcp_configurations(
         url=analysis["url"],
         recommended_mcp_endpoint=analysis.get("recommended_mcp_endpoint"),
-        framework=analysis.get("detected_framework")
+        framework=analysis.get("detected_framework"),
+        proxy_url=analysis.get("proxy_url")
     )
     return {
         "status": "success",
@@ -80,8 +81,10 @@ async def run_guide(url: str, platform: str = "claude_desktop") -> Dict[str, Any
     configs = generate_mcp_configurations(
         url=analysis["url"],
         recommended_mcp_endpoint=analysis.get("recommended_mcp_endpoint"),
-        framework=analysis.get("detected_framework")
+        framework=analysis.get("detected_framework"),
+        proxy_url=analysis.get("proxy_url")
     )
+
     
     server_name = configs["server_name"]
     mcp_endpoint = configs["remote_mcp_url"]

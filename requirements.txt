@@ -5,3 +5,5 @@ httpx
 python-dotenv
 pydantic
 sse-starlette
+apscheduler
+
