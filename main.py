@@ -13,6 +13,8 @@ import httpx
 from dotenv import load_dotenv
 from sse_starlette.sse import EventSourceResponse
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from fastapi_mcp import FastApiMCP
+
 
 from app.mcp_handler import router as mcp_router, mcp
 from app.proxy import proxy_manager
@@ -350,11 +352,17 @@ async def proxy_mcp_messages_endpoint(
 # 3. Include REST routes (/analyze, /generate, /guide)
 app.include_router(mcp_router)
 
-# 4. Mount SSE transport at /mcp (exposes GET /mcp/sse and POST /mcp/messages)
+# 4. Expose all FastAPI /api/ & REST endpoints as MCP tools via FastApiMCP
+fastapi_mcp = FastApiMCP(app, name="DataHub Talk to Data")
+fastapi_mcp.mount()
+
+
+# 5. Mount SSE transport at /mcp (exposes GET /mcp/sse and POST /mcp/messages)
 app.mount("/mcp", sse_app)
 
-# 5. Mount Streamable HTTP transport at root (exposes POST /mcp, GET /mcp, DELETE /mcp)
+# 6. Mount Streamable HTTP transport at root (exposes POST /mcp, GET /mcp, DELETE /mcp)
 app.mount("", http_app)
+
 
 
 if __name__ == "__main__":

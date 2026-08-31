@@ -6,4 +6,6 @@ python-dotenv
 pydantic
 sse-starlette
 apscheduler
+fastapi-mcp
+
 
