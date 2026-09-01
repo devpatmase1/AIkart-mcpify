@@ -89,38 +89,26 @@ class ProxyMCPManager:
         target_url = proxy["target_url"]
         has_mcp = proxy.get("has_mcp", False)
 
-        # If target has native /mcp, forward direct MCP JSON-RPC call
+        # If target has native /mcp, attempt forwarding direct MCP JSON-RPC call
         if has_mcp:
             target_mcp_url = f"{target_url}/mcp"
             try:
-                async with httpx.AsyncClient(timeout=15.0) as client:
+                async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
                     resp = await client.post(
                         target_mcp_url,
                         json=request_data,
                         headers={"Content-Type": "application/json"}
                     )
-                    if resp.status_code < 400:
-                        return resp.json()
-                    else:
-                        return {
-                            "jsonrpc": "2.0",
-                            "id": request_data.get("id"),
-                            "error": {
-                                "code": -32603,
-                                "message": f"Target MCP returned status {resp.status_code}: {resp.text}"
-                            }
-                        }
+                    content_type = resp.headers.get("content-type", "")
+                    if resp.status_code < 400 and "text/html" not in content_type:
+                        try:
+                            return resp.json()
+                        except Exception:
+                            pass
             except Exception as e:
-                return {
-                    "jsonrpc": "2.0",
-                    "id": request_data.get("id"),
-                    "error": {
-                        "code": -32603,
-                        "message": f"Failed to forward MCP request to target {target_url}: {str(e)}"
-                    }
-                }
+                print(f"[ProxyMCP] Forwarding to native target /mcp failed: {e}")
 
-        # Otherwise, handle as wrapper MCP server
+        # Otherwise, serve as MCPify REST wrapper server
         return await self.handle_jsonrpc_request(proxy, request_data)
 
     async def handle_jsonrpc_request(self, proxy: Dict[str, Any], req: Dict[str, Any]) -> Dict[str, Any]:

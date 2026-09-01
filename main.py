@@ -273,10 +273,7 @@ async def proxy_health_endpoint(proxy_id: str):
     }
 
 
-@app.get("/proxy/{proxy_id}/mcp", summary="Proxy MCP SSE Endpoint")
-@app.get("/proxy/{proxy_id}/mcp/", summary="Proxy MCP SSE Endpoint (Trailing Slash)")
-async def proxy_mcp_sse_endpoint(proxy_id: str, request: Request):
-    """SSE connection endpoint for proxy MCP clients."""
+async def _handle_proxy_sse(proxy_id: str, request: Request):
     proxy = proxy_manager.get_proxy(proxy_id)
 
     session_id = str(uuid.uuid4())
@@ -284,7 +281,7 @@ async def proxy_mcp_sse_endpoint(proxy_id: str, request: Request):
     proxy_manager.sessions[session_id] = queue
 
     app_url = proxy_manager.get_base_app_url()
-    messages_url = f"{app_url}/proxy/{proxy_id}/messages?session_id={session_id}"
+    messages_url = f"{app_url}/proxy/{proxy_id}/mcp/messages/?session_id={session_id}"
 
     async def event_generator():
         try:
@@ -299,10 +296,11 @@ async def proxy_mcp_sse_endpoint(proxy_id: str, request: Request):
                     break
                 try:
                     msg = await asyncio.wait_for(queue.get(), timeout=20.0)
-                    yield {
-                        "event": "message",
-                        "data": json.dumps(msg)
-                    }
+                    if msg is not None:
+                        yield {
+                            "event": "message",
+                            "data": json.dumps(msg)
+                        }
                 except asyncio.TimeoutError:
                     # Keep connection alive with silent ping
                     yield {
@@ -315,37 +313,67 @@ async def proxy_mcp_sse_endpoint(proxy_id: str, request: Request):
     return EventSourceResponse(event_generator())
 
 
+@app.get("/proxy/{proxy_id}/mcp", summary="Proxy MCP SSE Endpoint")
+async def proxy_mcp_sse_1(proxy_id: str, request: Request):
+    return await _handle_proxy_sse(proxy_id, request)
+
+
+@app.get("/proxy/{proxy_id}/mcp/", summary="Proxy MCP SSE Endpoint (Trailing Slash)")
+async def proxy_mcp_sse_2(proxy_id: str, request: Request):
+    return await _handle_proxy_sse(proxy_id, request)
+
+
+async def _handle_proxy_http(proxy_id: str, payload: Dict[str, Any]):
+    proxy = proxy_manager.get_proxy(proxy_id)
+    if not proxy:
+        raise HTTPException(status_code=404, detail=f"Proxy ID '{proxy_id}' not found.")
+    return await proxy_manager.forward_request(proxy_id, payload)
+
+
 @app.post("/proxy/{proxy_id}/mcp", summary="Proxy MCP Streamable HTTP Endpoint")
+async def proxy_mcp_http_1(proxy_id: str, payload: Dict[str, Any] = Body(...)):
+    return await _handle_proxy_http(proxy_id, payload)
+
+
 @app.post("/proxy/{proxy_id}/mcp/", summary="Proxy MCP Streamable HTTP Endpoint (Trailing Slash)")
-async def proxy_mcp_http_endpoint(
-    proxy_id: str,
-    payload: Dict[str, Any] = Body(...)
-):
-    """HTTP Streamable POST endpoint for proxy MCP clients."""
+async def proxy_mcp_http_2(proxy_id: str, payload: Dict[str, Any] = Body(...)):
+    return await _handle_proxy_http(proxy_id, payload)
+
+
+async def _handle_proxy_messages(proxy_id: str, payload: Dict[str, Any], session_id: Optional[str] = None):
     proxy = proxy_manager.get_proxy(proxy_id)
-    response_data = await proxy_manager.forward_request(proxy_id, payload)
-    return response_data
-
-
-@app.post("/proxy/{proxy_id}/messages", summary="Proxy MCP Message Handler")
-@app.post("/proxy/{proxy_id}/messages/", summary="Proxy MCP Message Handler (Trailing Slash)")
-async def proxy_mcp_messages_endpoint(
-    proxy_id: str,
-    session_id: str = Query(...),
-    payload: Dict[str, Any] = Body(...)
-):
-    """Receive JSON-RPC messages from MCP clients and push responses to SSE stream."""
-    proxy = proxy_manager.get_proxy(proxy_id)
-
-    session_queue = proxy_manager.sessions.get(session_id)
-    if not session_queue:
-        raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found.")
+    if not proxy:
+        raise HTTPException(status_code=404, detail=f"Proxy ID '{proxy_id}' not found.")
 
     response_data = await proxy_manager.forward_request(proxy_id, payload)
-    if response_data:
-        await session_queue.put(response_data)
 
-    return {"status": "accepted"}
+    if session_id and session_id in proxy_manager.sessions:
+        session_queue = proxy_manager.sessions[session_id]
+        if response_data:
+            await session_queue.put(response_data)
+        return {"status": "accepted"}
+    else:
+        return response_data
+
+
+@app.post("/proxy/{proxy_id}/mcp/messages", summary="Proxy MCP Message Handler")
+async def proxy_mcp_msg_1(proxy_id: str, payload: Dict[str, Any] = Body(...), session_id: Optional[str] = Query(None)):
+    return await _handle_proxy_messages(proxy_id, payload, session_id)
+
+
+@app.post("/proxy/{proxy_id}/mcp/messages/", summary="Proxy MCP Message Handler (Trailing Slash)")
+async def proxy_mcp_msg_2(proxy_id: str, payload: Dict[str, Any] = Body(...), session_id: Optional[str] = Query(None)):
+    return await _handle_proxy_messages(proxy_id, payload, session_id)
+
+
+@app.post("/proxy/{proxy_id}/messages", summary="Proxy MCP Message Handler (Legacy)")
+async def proxy_mcp_msg_3(proxy_id: str, payload: Dict[str, Any] = Body(...), session_id: Optional[str] = Query(None)):
+    return await _handle_proxy_messages(proxy_id, payload, session_id)
+
+
+@app.post("/proxy/{proxy_id}/messages/", summary="Proxy MCP Message Handler (Legacy Trailing Slash)")
+async def proxy_mcp_msg_4(proxy_id: str, payload: Dict[str, Any] = Body(...), session_id: Optional[str] = Query(None)):
+    return await _handle_proxy_messages(proxy_id, payload, session_id)
 
 
 
