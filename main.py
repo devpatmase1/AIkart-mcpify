@@ -280,7 +280,7 @@ async def _handle_proxy_sse(proxy_id: str, request: Request):
     queue = asyncio.Queue()
     proxy_manager.sessions[session_id] = queue
 
-    app_url = proxy_manager.get_base_app_url()
+    app_url = proxy_manager.get_base_app_url(request)
     messages_url = f"{app_url}/proxy/{proxy_id}/mcp/messages/?session_id={session_id}"
 
     async def event_generator():

@@ -14,7 +14,15 @@ class ProxyMCPManager:
         self.proxies: Dict[str, Dict[str, Any]] = {}
         self.sessions: Dict[str, asyncio.Queue] = {}
 
-    def get_base_app_url(self) -> str:
+    def get_base_app_url(self, request: Optional[Any] = None) -> str:
+        if request:
+            try:
+                proto = request.headers.get("x-forwarded-proto") or getattr(request.url, "scheme", "http")
+                host = request.headers.get("x-forwarded-host") or request.headers.get("host") or getattr(request.url, "netloc", "")
+                if host:
+                    return f"{proto}://{host}".rstrip("/")
+            except Exception:
+                pass
         return os.getenv("APP_URL", "http://127.0.0.1:10000").rstrip("/")
 
     def create_proxy(self, target_url: str, has_mcp: bool = False) -> Dict[str, Any]:
