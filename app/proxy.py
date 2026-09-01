@@ -54,25 +54,10 @@ class ProxyMCPManager:
         self.proxies[proxy_id] = proxy_data
         return proxy_data
 
-    def get_proxy(self, proxy_id: str) -> Dict[str, Any]:
-        """Retrieve proxy configuration by proxy ID, auto-recreating if missing from memory."""
+    def get_proxy(self, proxy_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve proxy configuration by proxy ID, or None if it doesn't exist."""
         proxy = self.proxies.get(proxy_id)
-        if not proxy:
-            app_url = self.get_base_app_url()
-            proxy_url = f"{app_url}/proxy/{proxy_id}/mcp"
-            now_str = datetime.now(timezone.utc).isoformat()
-            target_url = os.getenv("DEFAULT_PROXY_TARGET", "https://httpbin.org")
-            proxy = {
-                "proxy_id": proxy_id,
-                "proxy_url": proxy_url,
-                "target_url": target_url,
-                "has_mcp": False,
-                "created_at": now_str,
-                "last_used": now_str,
-                "status": "active"
-            }
-            self.proxies[proxy_id] = proxy
-        else:
+        if proxy:
             proxy["last_used"] = datetime.now(timezone.utc).isoformat()
         return proxy
 
@@ -101,7 +86,7 @@ class ProxyMCPManager:
         if has_mcp:
             target_mcp_url = f"{target_url}/mcp"
             try:
-                async with httpx.AsyncClient(timeout=15.0, verify=False) as client:
+                async with httpx.AsyncClient(timeout=15.0) as client:
                     resp = await client.post(
                         target_mcp_url,
                         json=request_data,
@@ -221,7 +206,7 @@ class ProxyMCPManager:
                 full_target_url = f"{target_url}{endpoint}"
 
                 try:
-                    async with httpx.AsyncClient(timeout=12.0, verify=False) as client:
+                    async with httpx.AsyncClient(timeout=12.0) as client:
                         resp = await client.request(
                             method=http_method,
                             url=full_target_url,
@@ -295,7 +280,7 @@ class ProxyMCPManager:
             elif tool_name == "health_check":
                 try:
                     health_url = f"{target_url}/health"
-                    async with httpx.AsyncClient(timeout=8.0, verify=False) as client:
+                    async with httpx.AsyncClient(timeout=8.0) as client:
                         resp = await client.get(health_url, follow_redirects=True)
                         res = {
                             "target_url": target_url,

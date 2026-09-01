@@ -193,7 +193,7 @@ async def analyze_agent_url(url: str) -> Dict[str, Any]:
     normalized_url = normalize_url(url)
     
     limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
-    async with httpx.AsyncClient(limits=limits, verify=False, timeout=8.0) as client:
+    async with httpx.AsyncClient(limits=limits, timeout=8.0) as client:
         # Probe root and common endpoints concurrently
         tasks = [probe_endpoint(client, normalized_url, "")] + [
             probe_endpoint(client, normalized_url, path) for path in COMMON_ENDPOINTS

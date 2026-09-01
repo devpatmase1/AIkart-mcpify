@@ -36,7 +36,7 @@ async def ping_proxy_targets_job():
     if not proxies:
         return
 
-    async with httpx.AsyncClient(timeout=10.0, verify=False) as client:
+    async with httpx.AsyncClient(timeout=10.0) as client:
         for p in proxies:
             proxy_id = p["proxy_id"]
             target_url = p["target_url"]
@@ -205,7 +205,7 @@ async def create_proxy_endpoint(payload: CreateProxyRequest):
 
     has_mcp = False
     try:
-        async with httpx.AsyncClient(timeout=5.0, verify=False) as client:
+        async with httpx.AsyncClient(timeout=5.0) as client:
             resp = await client.get(f"{normalized_url}/mcp", follow_redirects=True)
             if resp.status_code in [200, 400, 405]:
                 has_mcp = True
@@ -252,7 +252,7 @@ async def proxy_health_endpoint(proxy_id: str):
 
     start_time = asyncio.get_event_loop().time()
     try:
-        async with httpx.AsyncClient(timeout=8.0, verify=False) as client:
+        async with httpx.AsyncClient(timeout=8.0) as client:
             resp = await client.get(target_url, follow_redirects=True)
             status_code = resp.status_code
             target_reachable = resp.status_code < 500
@@ -275,6 +275,8 @@ async def proxy_health_endpoint(proxy_id: str):
 
 async def _handle_proxy_sse(proxy_id: str, request: Request):
     proxy = proxy_manager.get_proxy(proxy_id)
+    if not proxy:
+        raise HTTPException(status_code=404, detail=f"Proxy ID '{proxy_id}' not found.")
 
     session_id = str(uuid.uuid4())
     queue = asyncio.Queue()
