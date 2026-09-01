@@ -386,7 +386,12 @@ fastapi_mcp.mount_sse(mount_path="/mcp-server/sse")
 fastapi_mcp.mount_http(mount_path="/mcp-server/mcp")
 fastapi_mcp.mount(mount_path="/mcp-server")
 
-# 5. Mount SSE transport at /mcp (exposes GET /mcp/sse and POST /mcp/messages)
+# 5. Mount Dual MCP Transports at /mcp
+# Streamable HTTP transport (POST /mcp & POST /mcp/ for MCP 2024-11 spec)
+app.add_route("/mcp", http_app, methods=["POST"])
+app.add_route("/mcp/", http_app, methods=["POST"])
+
+# SSE transport (GET /mcp/sse & POST /mcp/messages for legacy SSE connectors)
 app.mount("/mcp", sse_app)
 
 # 6. Frontend Catch-All Route (MUST be defined AFTER all API & MCP routes/mounts)
