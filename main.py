@@ -361,19 +361,24 @@ fastapi_mcp.mount(mount_path="/mcp-server")
 # 5. Mount SSE transport at /mcp (exposes GET /mcp/sse and POST /mcp/messages)
 app.mount("/mcp", sse_app)
 
-# 6. Frontend Catch-All Route (AFTER all API & MCP routes)
+# 6. Frontend Catch-All Route (MUST be defined AFTER all API & MCP routes/mounts)
 @app.get("/{full_path:path}", response_class=HTMLResponse, include_in_schema=False)
 async def serve_frontend_catch_all(full_path: str):
     """
     Catch-all route serving frontend Web UI.
-    Excludes API, MCP, Proxy, Docs, and Health endpoints from matching HTML.
+    Excludes API, MCP, Proxy, Docs, and Health endpoints from returning HTML SPA page.
     """
-    excluded_prefixes = [
-        "api", "mcp", "mcp-server", "proxy", "health",
-        "docs", "openapi.json", "redoc"
-    ]
-    first_segment = full_path.strip("/").split("/")[0].lower()
-    if first_segment in excluded_prefixes:
+    clean_path = full_path.lstrip("/")
+    if (
+        clean_path.startswith("mcp-server") or
+        clean_path.startswith("api") or
+        clean_path.startswith("health") or
+        clean_path.startswith("mcp") or
+        clean_path.startswith("proxy") or
+        clean_path.startswith("docs") or
+        clean_path.startswith("openapi.json") or
+        clean_path.startswith("redoc")
+    ):
         raise HTTPException(status_code=404, detail="Endpoint not found.")
 
     html_path = os.path.join(os.path.dirname(__file__), "app", "web", "index.html")
