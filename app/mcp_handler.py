@@ -1,12 +1,13 @@
 from enum import Enum
 from typing import Dict, Any, Optional
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
 from app.analyzer import analyze_agent_url
 from app.generator import generate_mcp_configurations
+from app.rate_limit import limiter
 
 
 # ---------------------------------------------------------
@@ -174,7 +175,9 @@ async def mcp_tool_get_integration_guide(url: str, platform: str = "claude_deskt
 
 @router.post("/analyze", operation_id="analyze_agent", summary="Analyze AI Agent URL")
 @router.get("/analyze", summary="Analyze AI Agent URL (GET)")
+@limiter.limit("10/minute")
 async def analyze_agent_endpoint(
+    request: Request,
     payload: Optional[AnalyzeAgentRequest] = None,
     url: Optional[str] = Query(None, description="The agent URL if using GET")
 ) -> Dict[str, Any]:
@@ -184,13 +187,17 @@ async def analyze_agent_endpoint(
     
     try:
         return await run_analysis(target_url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to analyze agent URL: {str(e)}")
 
 
 @router.post("/generate", operation_id="generate_mcp_config", summary="Generate MCP Configurations")
 @router.get("/generate", summary="Generate MCP Configurations (GET)")
+@limiter.limit("10/minute")
 async def generate_mcp_config_endpoint(
+    request: Request,
     payload: Optional[GenerateConfigRequest] = None,
     url: Optional[str] = Query(None, description="The agent URL if using GET")
 ) -> Dict[str, Any]:
@@ -200,6 +207,8 @@ async def generate_mcp_config_endpoint(
 
     try:
         return await run_generation(target_url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate MCP configs: {str(e)}")
 
@@ -219,5 +228,7 @@ async def get_integration_guide_endpoint(
 
     try:
         return await run_guide(target_url, target_platform)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get integration guide: {str(e)}")

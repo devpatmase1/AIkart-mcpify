@@ -2,6 +2,7 @@ import os
 import uuid
 import json
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from typing import Dict, Any, Optional
 
@@ -14,14 +15,24 @@ from dotenv import load_dotenv
 from sse_starlette.sse import EventSourceResponse
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from fastapi_mcp import FastApiMCP
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 
 from app.mcp_handler import router as mcp_router, mcp
 from app.proxy import proxy_manager
 from app.generator import generate_proxy_config
+from app.security import is_public_url
+from app.rate_limit import limiter
 
 # Load environment variables
 load_dotenv()
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("mcpify")
 
 # Pre-initialize FastMCP ASGI apps (SSE transport & Streamable HTTP transport)
 sse_app = mcp.sse_app()
@@ -44,9 +55,9 @@ async def ping_proxy_targets_job():
             try:
                 resp = await client.get(health_target, follow_redirects=True)
                 p["last_ping_status"] = resp.status_code
-                print(f"[APScheduler] Pinged proxy {proxy_id} target ({health_target}) - Status: {resp.status_code}")
+                logger.info("[APScheduler] Pinged proxy %s target (%s) - Status: %s", proxy_id, health_target, resp.status_code)
             except Exception as e:
-                print(f"[APScheduler] Error pinging proxy {proxy_id} ({health_target}): {e}")
+                logger.warning("[APScheduler] Error pinging proxy %s (%s): %s", proxy_id, health_target, e)
 
 
 async def ping_keep_alive():
@@ -56,9 +67,9 @@ async def ping_keep_alive():
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(health_url)
-            print(f"[Keep-Alive] Pinged {health_url} - Status: {response.status_code}")
+            logger.info("[Keep-Alive] Pinged %s - Status: %s", health_url, response.status_code)
     except Exception as e:
-        print(f"[Keep-Alive] Keep-alive ping error: {e}")
+        logger.warning("[Keep-Alive] Keep-alive ping error: %s", e)
 
 
 async def keep_alive_worker():
@@ -70,14 +81,14 @@ async def keep_alive_worker():
         except asyncio.CancelledError:
             break
         except Exception as e:
-            print(f"[Keep-Alive] Background loop exception: {e}")
+            logger.warning("[Keep-Alive] Background loop exception: %s", e)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: launch keep-alive background worker
     worker_task = asyncio.create_task(keep_alive_worker())
-    print("[MCPify] Keep-alive background worker initialized (interval: 10 mins).")
+    logger.info("[MCPify] Keep-alive background worker initialized (interval: 10 mins).")
 
     # Startup: launch APScheduler for proxy targets
     try:
@@ -89,13 +100,13 @@ async def lifespan(app: FastAPI):
             replace_existing=True
         )
         scheduler.start()
-        print("[MCPify] APScheduler initialized (proxy target ping interval: 10 mins).")
+        logger.info("[MCPify] APScheduler initialized (proxy target ping interval: 10 mins).")
     except Exception as e:
-        print(f"[MCPify] APScheduler initialization notice: {e}")
-    
+        logger.warning("[MCPify] APScheduler initialization notice: %s", e)
+
     # Startup: enter FastMCP streamable HTTP session manager
     async with mcp.session_manager.run():
-        print("[MCPify] FastMCP Streamable HTTP session manager active.")
+        logger.info("[MCPify] FastMCP Streamable HTTP session manager active.")
         yield
 
     # Shutdown: stop scheduler & worker gracefully
@@ -108,7 +119,7 @@ async def lifespan(app: FastAPI):
         await worker_task
     except asyncio.CancelledError:
         pass
-    print("[MCPify] Keep-alive worker, scheduler, and MCP session manager stopped.")
+    logger.info("[MCPify] Keep-alive worker, scheduler, and MCP session manager stopped.")
 
 
 # Initialize FastAPI application
@@ -122,6 +133,14 @@ app = FastAPI(
     version="1.1.0",
     lifespan=lifespan
 )
+
+# Rate limiting for endpoints that trigger outbound probes / create state.
+# Note: SlowAPIMiddleware is deliberately NOT used here - it inspects every
+# route's handler for __name__/__module__, which crashes on the raw ASGI
+# apps mounted below (app.mount("/mcp", ...)). The @limiter.limit(...)
+# decorators on individual routes work standalone without the middleware.
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # CORS enabled for all origins and headers
 app.add_middleware(
@@ -193,7 +212,8 @@ async def api_info():
 # 2. PROXY ENDPOINTS
 
 @app.post("/proxy/create", summary="Create Proxy MCP Endpoint")
-async def create_proxy_endpoint(payload: CreateProxyRequest):
+@limiter.limit("10/minute")
+async def create_proxy_endpoint(request: Request, payload: CreateProxyRequest):
     """Creates a proxy MCP endpoint for a target URL."""
     target_url = payload.url.strip()
     if not target_url:
@@ -202,6 +222,10 @@ async def create_proxy_endpoint(payload: CreateProxyRequest):
     normalized_url = target_url.rstrip("/")
     if not normalized_url.startswith("http://") and not normalized_url.startswith("https://"):
         normalized_url = f"https://{normalized_url}"
+
+    is_safe, reason = await is_public_url(normalized_url)
+    if not is_safe:
+        raise HTTPException(status_code=400, detail=f"Refusing to proxy target: {reason}")
 
     has_mcp = False
     try:

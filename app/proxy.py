@@ -2,9 +2,12 @@ import os
 import uuid
 import json
 import asyncio
+import logging
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 import httpx
+
+logger = logging.getLogger("mcpify")
 
 
 class ProxyMCPManager:
@@ -99,7 +102,7 @@ class ProxyMCPManager:
                         except Exception:
                             pass
             except Exception as e:
-                print(f"[ProxyMCP] Forwarding to native target /mcp failed: {e}")
+                logger.warning("[ProxyMCP] Forwarding to native target /mcp failed: %s", e)
 
         # Otherwise, serve as MCPify REST wrapper server
         return await self.handle_jsonrpc_request(proxy, request_data)

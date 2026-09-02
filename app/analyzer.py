@@ -4,6 +4,7 @@ from typing import Dict, List, Any, Optional
 from urllib.parse import urlparse
 import httpx
 from app.proxy import proxy_manager
+from app.security import is_public_url
 
 
 
@@ -191,7 +192,11 @@ async def analyze_agent_url(url: str) -> Dict[str, Any]:
     and recommended MCP endpoint.
     """
     normalized_url = normalize_url(url)
-    
+
+    is_safe, reason = await is_public_url(normalized_url)
+    if not is_safe:
+        raise ValueError(f"Refusing to probe target: {reason}")
+
     limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
     async with httpx.AsyncClient(limits=limits, timeout=8.0) as client:
         # Probe root and common endpoints concurrently
