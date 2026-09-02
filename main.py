@@ -155,6 +155,10 @@ app.add_middleware(
 # Request schemas
 class CreateProxyRequest(BaseModel):
     url: str = Field(..., description="Target AI agent URL to proxy")
+    api_key: Optional[str] = Field(
+        None,
+        description="Bearer token to forward to the target agent's protected endpoints, if it requires auth."
+    )
 
 
 # 1. Health check & Web UI / Root endpoints
@@ -236,7 +240,7 @@ async def create_proxy_endpoint(request: Request, payload: CreateProxyRequest):
     except Exception:
         has_mcp = False
 
-    proxy_data = proxy_manager.create_proxy(target_url=normalized_url, has_mcp=has_mcp)
+    proxy_data = proxy_manager.create_proxy(target_url=normalized_url, has_mcp=has_mcp, api_key=payload.api_key)
     proxy_id = proxy_data["proxy_id"]
     proxy_url = proxy_data["proxy_url"]
 

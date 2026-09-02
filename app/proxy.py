@@ -28,7 +28,7 @@ class ProxyMCPManager:
                 pass
         return os.getenv("APP_URL", "http://127.0.0.1:10000").rstrip("/")
 
-    def create_proxy(self, target_url: str, has_mcp: bool = False) -> Dict[str, Any]:
+    def create_proxy(self, target_url: str, has_mcp: bool = False, api_key: Optional[str] = None) -> Dict[str, Any]:
         """Create a new proxy session or return existing active proxy."""
         target_url = target_url.strip().rstrip("/")
         if not target_url.startswith("http://") and not target_url.startswith("https://"):
@@ -38,6 +38,8 @@ class ProxyMCPManager:
         for proxy_id, proxy in self.proxies.items():
             if proxy["target_url"] == target_url:
                 proxy["last_used"] = datetime.now(timezone.utc).isoformat()
+                if api_key:
+                    proxy["api_key"] = api_key
                 return proxy
 
         proxy_id = str(uuid.uuid4())[:8]
@@ -50,6 +52,7 @@ class ProxyMCPManager:
             "proxy_url": proxy_url,
             "target_url": target_url,
             "has_mcp": has_mcp,
+            "api_key": api_key,
             "created_at": now_str,
             "last_used": now_str,
             "status": "active"
@@ -66,8 +69,13 @@ class ProxyMCPManager:
 
 
     def list_proxies(self) -> List[Dict[str, Any]]:
-        """Return list of all active proxies."""
-        return list(self.proxies.values())
+        """Return list of all active proxies, with credentials masked."""
+        result = []
+        for proxy in self.proxies.values():
+            sanitized = {k: v for k, v in proxy.items() if k != "api_key"}
+            sanitized["has_api_key"] = bool(proxy.get("api_key"))
+            result.append(sanitized)
+        return result
 
     async def forward_request(self, proxy_id: str, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Forward request to target or process MCP wrapper tool calls."""
@@ -88,12 +96,15 @@ class ProxyMCPManager:
         # If target has native /mcp, attempt forwarding direct MCP JSON-RPC call
         if has_mcp:
             target_mcp_url = f"{target_url}/mcp"
+            headers = {"Content-Type": "application/json"}
+            if proxy.get("api_key"):
+                headers["Authorization"] = f"Bearer {proxy['api_key']}"
             try:
                 async with httpx.AsyncClient(timeout=15.0) as client:
                     resp = await client.post(
                         target_mcp_url,
                         json=request_data,
-                        headers={"Content-Type": "application/json"}
+                        headers=headers
                     )
                     content_type = resp.headers.get("content-type", "")
                     if resp.status_code < 400 and "text/html" not in content_type:
@@ -208,13 +219,18 @@ class ProxyMCPManager:
                     endpoint = f"/{endpoint}"
                 full_target_url = f"{target_url}{endpoint}"
 
+                headers = {}
+                if proxy.get("api_key"):
+                    headers["Authorization"] = f"Bearer {proxy['api_key']}"
+
                 try:
                     async with httpx.AsyncClient(timeout=12.0) as client:
                         resp = await client.request(
                             method=http_method,
                             url=full_target_url,
                             params=query_params,
-                            json=json_payload
+                            json=json_payload,
+                            headers=headers
                         )
                         content_type = resp.headers.get("content-type", "")
                         if "json" in content_type:
@@ -263,6 +279,7 @@ class ProxyMCPManager:
                     "target_url": target_url,
                     "proxy_url": proxy["proxy_url"],
                     "has_mcp": proxy.get("has_mcp", False),
+                    "has_api_key": bool(proxy.get("api_key")),
                     "created_at": proxy.get("created_at"),
                     "last_used": proxy.get("last_used"),
                     "status": proxy.get("status", "active")
