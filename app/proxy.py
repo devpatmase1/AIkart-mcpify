@@ -77,6 +77,17 @@ class ProxyMCPManager:
             result.append(sanitized)
         return result
 
+    def record_ping_status(self, proxy_id: str, status_code: Optional[int]) -> None:
+        """Record the last health-ping status against the live proxy record.
+
+        list_proxies() returns sanitized copies (to keep api_key out of
+        responses), so callers must write ping results back through this
+        method rather than mutating list_proxies()'s output directly.
+        """
+        proxy = self.proxies.get(proxy_id)
+        if proxy:
+            proxy["last_ping_status"] = status_code
+
     async def forward_request(self, proxy_id: str, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Forward request to target or process MCP wrapper tool calls."""
         proxy = self.get_proxy(proxy_id)
@@ -301,7 +312,10 @@ class ProxyMCPManager:
                 try:
                     health_url = f"{target_url}/health"
                     async with httpx.AsyncClient(timeout=8.0) as client:
-                        resp = await client.get(health_url, follow_redirects=True)
+                        # No follow_redirects: target_url was only SSRF-checked
+                        # once, at proxy-creation time - a redirect here could
+                        # otherwise point anywhere without being re-validated.
+                        resp = await client.get(health_url)
                         res = {
                             "target_url": target_url,
                             "health_url": health_url,

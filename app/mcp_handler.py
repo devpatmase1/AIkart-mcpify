@@ -154,19 +154,28 @@ async def run_guide(url: str, platform: str = "claude_desktop") -> Dict[str, Any
 @mcp.tool(name="analyze_agent", description="Probe an AI agent URL, detect framework signatures, and find MCP endpoints.")
 async def mcp_tool_analyze_agent(url: str) -> Dict[str, Any]:
     """Probes common endpoints (/mcp, /sse, /health, /tools, /docs, /openapi.json) and detects framework."""
-    return await run_analysis(url)
+    try:
+        return await run_analysis(url)
+    except ValueError as e:
+        return {"error": str(e)}
 
 
 @mcp.tool(name="generate_mcp_config", description="Generate ready-to-use MCP configuration JSON for Claude Desktop, Cursor, and VS Code.")
 async def mcp_tool_generate_mcp_config(url: str) -> Dict[str, Any]:
     """Generates JSON configuration snippets for Claude Desktop, Cursor, and VS Code."""
-    return await run_generation(url)
+    try:
+        return await run_generation(url)
+    except ValueError as e:
+        return {"error": str(e)}
 
 
 @mcp.tool(name="get_integration_guide", description="Get step-by-step setup guides for Claude Desktop, Cursor, or Web MCP clients.")
 async def mcp_tool_get_integration_guide(url: str, platform: str = "claude_desktop") -> Dict[str, Any]:
     """Returns platform-specific setup instructions and configuration paths."""
-    return await run_guide(url, platform)
+    try:
+        return await run_guide(url, platform)
+    except ValueError as e:
+        return {"error": str(e)}
 
 
 # ---------------------------------------------------------

@@ -53,8 +53,8 @@ async def ping_proxy_targets_job():
             target_url = p["target_url"]
             health_target = f"{target_url}/health"
             try:
-                resp = await client.get(health_target, follow_redirects=True)
-                p["last_ping_status"] = resp.status_code
+                resp = await client.get(health_target)
+                proxy_manager.record_ping_status(proxy_id, resp.status_code)
                 logger.info("[APScheduler] Pinged proxy %s target (%s) - Status: %s", proxy_id, health_target, resp.status_code)
             except Exception as e:
                 logger.warning("[APScheduler] Error pinging proxy %s (%s): %s", proxy_id, health_target, e)
@@ -233,8 +233,10 @@ async def create_proxy_endpoint(request: Request, payload: CreateProxyRequest):
 
     has_mcp = False
     try:
+        # No follow_redirects: a redirect response isn't re-checked against
+        # is_public_url, so following it could bypass the SSRF guard above.
         async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{normalized_url}/mcp", follow_redirects=True)
+            resp = await client.get(f"{normalized_url}/mcp")
             if resp.status_code in [200, 400, 405]:
                 has_mcp = True
     except Exception:
@@ -280,8 +282,10 @@ async def proxy_health_endpoint(proxy_id: str):
 
     start_time = asyncio.get_event_loop().time()
     try:
+        # No follow_redirects: this proxy's target_url was only SSRF-checked
+        # once, at creation time - a redirect here isn't re-validated.
         async with httpx.AsyncClient(timeout=8.0) as client:
-            resp = await client.get(target_url, follow_redirects=True)
+            resp = await client.get(target_url)
             status_code = resp.status_code
             target_reachable = resp.status_code < 500
             latency_ms = round((asyncio.get_event_loop().time() - start_time) * 1000, 2)

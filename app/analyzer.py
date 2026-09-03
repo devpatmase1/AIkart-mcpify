@@ -30,7 +30,10 @@ async def probe_endpoint(client: httpx.AsyncClient, base_url: str, path: str) ->
     """Probe an individual endpoint on the target agent."""
     target_url = f"{base_url}{path}"
     try:
-        response = await client.get(target_url, timeout=6.0, follow_redirects=True)
+        # No follow_redirects: the SSRF guard only validates target_url itself,
+        # so a redirect response could point anywhere (including internal
+        # addresses) without being re-checked.
+        response = await client.get(target_url, timeout=6.0)
         is_accessible = response.status_code < 400 or response.status_code == 405
         
         # Try to safely read partial text/json content
