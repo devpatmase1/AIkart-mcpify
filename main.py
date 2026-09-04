@@ -43,7 +43,7 @@ scheduler = AsyncIOScheduler()
 
 async def ping_proxy_targets_job():
     """APScheduler job: Ping proxy targets every 10 minutes."""
-    proxies = proxy_manager.list_proxies()
+    proxies = await proxy_manager.list_proxies()
     if not proxies:
         return
 
@@ -54,7 +54,7 @@ async def ping_proxy_targets_job():
             health_target = f"{target_url}/health"
             try:
                 resp = await client.get(health_target)
-                proxy_manager.record_ping_status(proxy_id, resp.status_code)
+                await proxy_manager.record_ping_status(proxy_id, resp.status_code)
                 logger.info("[APScheduler] Pinged proxy %s target (%s) - Status: %s", proxy_id, health_target, resp.status_code)
             except Exception as e:
                 logger.warning("[APScheduler] Error pinging proxy %s (%s): %s", proxy_id, health_target, e)
@@ -242,7 +242,7 @@ async def create_proxy_endpoint(request: Request, payload: CreateProxyRequest):
     except Exception:
         has_mcp = False
 
-    proxy_data = proxy_manager.create_proxy(target_url=normalized_url, has_mcp=has_mcp, api_key=payload.api_key)
+    proxy_data = await proxy_manager.create_proxy(target_url=normalized_url, has_mcp=has_mcp, api_key=payload.api_key)
     proxy_id = proxy_data["proxy_id"]
     proxy_url = proxy_data["proxy_url"]
 
@@ -261,7 +261,7 @@ async def create_proxy_endpoint(request: Request, payload: CreateProxyRequest):
 @app.get("/proxy/list", summary="List Active Proxies")
 async def list_proxies_endpoint():
     """List all active proxy sessions."""
-    proxies = proxy_manager.list_proxies()
+    proxies = await proxy_manager.list_proxies()
     return {
         "proxies": proxies,
         "total": len(proxies)
@@ -271,7 +271,7 @@ async def list_proxies_endpoint():
 @app.get("/proxy/{proxy_id}/health", summary="Check Proxy & Target Health")
 async def proxy_health_endpoint(proxy_id: str):
     """Check if proxy is active and target URL is reachable."""
-    proxy = proxy_manager.get_proxy(proxy_id)
+    proxy = await proxy_manager.get_proxy(proxy_id)
     if not proxy:
         raise HTTPException(status_code=404, detail=f"Proxy ID '{proxy_id}' not found.")
 
@@ -306,7 +306,7 @@ async def proxy_health_endpoint(proxy_id: str):
 
 
 async def _handle_proxy_sse(proxy_id: str, request: Request):
-    proxy = proxy_manager.get_proxy(proxy_id)
+    proxy = await proxy_manager.get_proxy(proxy_id)
     if not proxy:
         raise HTTPException(status_code=404, detail=f"Proxy ID '{proxy_id}' not found.")
 
@@ -358,7 +358,7 @@ async def proxy_mcp_sse_2(proxy_id: str, request: Request):
 
 
 async def _handle_proxy_http(proxy_id: str, payload: Dict[str, Any]):
-    proxy = proxy_manager.get_proxy(proxy_id)
+    proxy = await proxy_manager.get_proxy(proxy_id)
     if not proxy:
         raise HTTPException(status_code=404, detail=f"Proxy ID '{proxy_id}' not found.")
     return await proxy_manager.forward_request(proxy_id, payload)
@@ -375,7 +375,7 @@ async def proxy_mcp_http_2(proxy_id: str, payload: Dict[str, Any] = Body(...)):
 
 
 async def _handle_proxy_messages(proxy_id: str, payload: Dict[str, Any], session_id: Optional[str] = None):
-    proxy = proxy_manager.get_proxy(proxy_id)
+    proxy = await proxy_manager.get_proxy(proxy_id)
     if not proxy:
         raise HTTPException(status_code=404, detail=f"Proxy ID '{proxy_id}' not found.")
 

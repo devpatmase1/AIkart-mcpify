@@ -8,3 +8,4 @@ sse-starlette==3.4.8
 apscheduler==3.11.3
 fastapi-mcp==0.4.0
 slowapi==0.1.10
+redis==8.1.0

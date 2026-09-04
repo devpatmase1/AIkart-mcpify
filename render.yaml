@@ -8,3 +8,5 @@ services:
     envVars:
       - key: APP_URL
         sync: false
+      - key: UPSTASH_REDIS_URL
+        sync: false

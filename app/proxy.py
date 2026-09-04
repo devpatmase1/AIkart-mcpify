@@ -9,13 +9,35 @@ import httpx
 
 logger = logging.getLogger("mcpify")
 
+REDIS_KEY_PREFIX = "mcpify:proxy:"
+REDIS_INDEX_PREFIX = "mcpify:proxy_by_url:"
+
 
 class ProxyMCPManager:
-    """Manages proxy sessions for agents lacking native MCP endpoints."""
+    """Manages proxy sessions for agents lacking native MCP endpoints.
+
+    Proxy records persist to Redis (Upstash) when UPSTASH_REDIS_URL is set,
+    so they survive redeploys/restarts instead of vanishing with every
+    process restart. Falls back to an in-memory dict when no Redis URL is
+    configured, so local dev and the test suite need no Redis at all.
+    SSE sessions (self.sessions) are always in-memory - an asyncio.Queue
+    is tied to one open connection in one process and can't be persisted
+    meaningfully; a redeploy naturally drops open SSE connections anyway.
+    """
 
     def __init__(self):
+        self.redis_url = os.getenv("UPSTASH_REDIS_URL") or os.getenv("REDIS_URL")
+        self._redis = None
         self.proxies: Dict[str, Dict[str, Any]] = {}
         self.sessions: Dict[str, asyncio.Queue] = {}
+
+    def _get_redis(self):
+        if not self.redis_url:
+            return None
+        if self._redis is None:
+            import redis.asyncio as redis_asyncio
+            self._redis = redis_asyncio.from_url(self.redis_url, decode_responses=True)
+        return self._redis
 
     def get_base_app_url(self, request: Optional[Any] = None) -> str:
         if request:
@@ -28,25 +50,52 @@ class ProxyMCPManager:
                 pass
         return os.getenv("APP_URL", "http://127.0.0.1:10000").rstrip("/")
 
-    def create_proxy(self, target_url: str, has_mcp: bool = False, api_key: Optional[str] = None) -> Dict[str, Any]:
+    async def create_proxy(self, target_url: str, has_mcp: bool = False, api_key: Optional[str] = None) -> Dict[str, Any]:
         """Create a new proxy session or return existing active proxy."""
         target_url = target_url.strip().rstrip("/")
         if not target_url.startswith("http://") and not target_url.startswith("https://"):
             target_url = f"https://{target_url}"
 
-        # Reuse existing proxy if present for target URL
+        redis = self._get_redis()
+        now_str = datetime.now(timezone.utc).isoformat()
+
+        if redis is not None:
+            existing_id = await redis.get(f"{REDIS_INDEX_PREFIX}{target_url}")
+            if existing_id:
+                existing = await self._redis_get_proxy(redis, existing_id)
+                if existing:
+                    existing["last_used"] = now_str
+                    if api_key:
+                        existing["api_key"] = api_key
+                    await self._redis_save_proxy(redis, existing)
+                    return existing
+
+            proxy_id = str(uuid.uuid4())[:8]
+            proxy_url = f"{self.get_base_app_url()}/proxy/{proxy_id}/mcp"
+            proxy_data = {
+                "proxy_id": proxy_id,
+                "proxy_url": proxy_url,
+                "target_url": target_url,
+                "has_mcp": has_mcp,
+                "api_key": api_key,
+                "created_at": now_str,
+                "last_used": now_str,
+                "status": "active"
+            }
+            await self._redis_save_proxy(redis, proxy_data)
+            await redis.set(f"{REDIS_INDEX_PREFIX}{target_url}", proxy_id)
+            return proxy_data
+
+        # In-memory fallback
         for proxy_id, proxy in self.proxies.items():
             if proxy["target_url"] == target_url:
-                proxy["last_used"] = datetime.now(timezone.utc).isoformat()
+                proxy["last_used"] = now_str
                 if api_key:
                     proxy["api_key"] = api_key
                 return proxy
 
         proxy_id = str(uuid.uuid4())[:8]
-        app_url = self.get_base_app_url()
-        proxy_url = f"{app_url}/proxy/{proxy_id}/mcp"
-
-        now_str = datetime.now(timezone.utc).isoformat()
+        proxy_url = f"{self.get_base_app_url()}/proxy/{proxy_id}/mcp"
         proxy_data = {
             "proxy_id": proxy_id,
             "proxy_url": proxy_url,
@@ -60,37 +109,72 @@ class ProxyMCPManager:
         self.proxies[proxy_id] = proxy_data
         return proxy_data
 
-    def get_proxy(self, proxy_id: str) -> Optional[Dict[str, Any]]:
+    async def _redis_get_proxy(self, redis, proxy_id: str) -> Optional[Dict[str, Any]]:
+        raw = await redis.get(f"{REDIS_KEY_PREFIX}{proxy_id}")
+        return json.loads(raw) if raw else None
+
+    async def _redis_save_proxy(self, redis, proxy: Dict[str, Any]) -> None:
+        await redis.set(f"{REDIS_KEY_PREFIX}{proxy['proxy_id']}", json.dumps(proxy))
+
+    async def get_proxy(self, proxy_id: str) -> Optional[Dict[str, Any]]:
         """Retrieve proxy configuration by proxy ID, or None if it doesn't exist."""
+        redis = self._get_redis()
+        now_str = datetime.now(timezone.utc).isoformat()
+
+        if redis is not None:
+            proxy = await self._redis_get_proxy(redis, proxy_id)
+            if proxy:
+                proxy["last_used"] = now_str
+                await self._redis_save_proxy(redis, proxy)
+            return proxy
+
         proxy = self.proxies.get(proxy_id)
         if proxy:
-            proxy["last_used"] = datetime.now(timezone.utc).isoformat()
+            proxy["last_used"] = now_str
         return proxy
 
-
-    def list_proxies(self) -> List[Dict[str, Any]]:
+    async def list_proxies(self) -> List[Dict[str, Any]]:
         """Return list of all active proxies, with credentials masked."""
+        redis = self._get_redis()
+        proxies: List[Dict[str, Any]] = []
+
+        if redis is not None:
+            keys = [k async for k in redis.scan_iter(match=f"{REDIS_KEY_PREFIX}*")]
+            if keys:
+                raw_values = await redis.mget(keys)
+                proxies = [json.loads(v) for v in raw_values if v]
+        else:
+            proxies = list(self.proxies.values())
+
         result = []
-        for proxy in self.proxies.values():
+        for proxy in proxies:
             sanitized = {k: v for k, v in proxy.items() if k != "api_key"}
             sanitized["has_api_key"] = bool(proxy.get("api_key"))
             result.append(sanitized)
         return result
 
-    def record_ping_status(self, proxy_id: str, status_code: Optional[int]) -> None:
+    async def record_ping_status(self, proxy_id: str, status_code: Optional[int]) -> None:
         """Record the last health-ping status against the live proxy record.
 
         list_proxies() returns sanitized copies (to keep api_key out of
         responses), so callers must write ping results back through this
         method rather than mutating list_proxies()'s output directly.
         """
+        redis = self._get_redis()
+        if redis is not None:
+            proxy = await self._redis_get_proxy(redis, proxy_id)
+            if proxy:
+                proxy["last_ping_status"] = status_code
+                await self._redis_save_proxy(redis, proxy)
+            return
+
         proxy = self.proxies.get(proxy_id)
         if proxy:
             proxy["last_ping_status"] = status_code
 
     async def forward_request(self, proxy_id: str, request_data: Dict[str, Any]) -> Dict[str, Any]:
         """Forward request to target or process MCP wrapper tool calls."""
-        proxy = self.get_proxy(proxy_id)
+        proxy = await self.get_proxy(proxy_id)
         if not proxy:
             return {
                 "jsonrpc": "2.0",

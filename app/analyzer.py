@@ -237,7 +237,7 @@ async def analyze_agent_url(url: str) -> Dict[str, Any]:
         proxy_url = None
         proxy_id = None
     else:
-        proxy = proxy_manager.create_proxy(target_url=normalized_url, has_mcp=False)
+        proxy = await proxy_manager.create_proxy(target_url=normalized_url, has_mcp=False)
         proxy_url = proxy["proxy_url"]
         proxy_id = proxy["proxy_id"]
         recommended_mcp = proxy_url
