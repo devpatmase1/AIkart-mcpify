@@ -22,7 +22,7 @@ from slowapi.errors import RateLimitExceeded
 from app.mcp_handler import router as mcp_router, mcp
 from app.proxy import proxy_manager
 from app.generator import generate_proxy_config
-from app.security import is_public_url
+from app.security import is_public_url, resolve_canonical_base, normalize_url
 from app.rate_limit import limiter
 
 # Load environment variables
@@ -223,13 +223,15 @@ async def create_proxy_endpoint(request: Request, payload: CreateProxyRequest):
     if not target_url:
         raise HTTPException(status_code=400, detail="Missing required 'url' parameter.")
 
-    normalized_url = target_url.rstrip("/")
-    if not normalized_url.startswith("http://") and not normalized_url.startswith("https://"):
-        normalized_url = f"https://{normalized_url}"
+    normalized_url = normalize_url(target_url)
 
     is_safe, reason = await is_public_url(normalized_url)
     if not is_safe:
         raise HTTPException(status_code=400, detail=f"Refusing to proxy target: {reason}")
+
+    # Resolve apex->www / http->https style domain-level redirects once,
+    # so a site that blanket-redirects every path doesn't look dead.
+    normalized_url = await resolve_canonical_base(normalized_url)
 
     has_mcp = False
     try:

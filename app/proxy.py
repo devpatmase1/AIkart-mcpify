@@ -7,6 +7,8 @@ from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 import httpx
 
+from app.security import normalize_url
+
 logger = logging.getLogger("mcpify")
 
 REDIS_KEY_PREFIX = "mcpify:proxy:"
@@ -52,9 +54,7 @@ class ProxyMCPManager:
 
     async def create_proxy(self, target_url: str, has_mcp: bool = False, api_key: Optional[str] = None) -> Dict[str, Any]:
         """Create a new proxy session or return existing active proxy."""
-        target_url = target_url.strip().rstrip("/")
-        if not target_url.startswith("http://") and not target_url.startswith("https://"):
-            target_url = f"https://{target_url}"
+        target_url = normalize_url(target_url)
 
         redis = self._get_redis()
         now_str = datetime.now(timezone.utc).isoformat()

@@ -1,10 +1,9 @@
 import asyncio
 import re
 from typing import Dict, List, Any, Optional
-from urllib.parse import urlparse
 import httpx
 from app.proxy import proxy_manager
-from app.security import is_public_url
+from app.security import is_public_url, resolve_canonical_base, normalize_url
 
 
 
@@ -18,12 +17,10 @@ COMMON_ENDPOINTS = [
 ]
 
 
-def normalize_url(url: str) -> str:
-    """Ensure URL has scheme and strip trailing slash."""
-    url = url.strip()
-    if not url.startswith("http://") and not url.startswith("https://"):
-        url = f"https://{url}"
-    return url.rstrip("/")
+# normalize_url lives in app.security now, shared with proxy.py/main.py so
+# every entry point treats a pasted URL (bare domain or full page URL) the
+# same way. Re-exported here for backwards compatibility with existing
+# imports of app.analyzer.normalize_url.
 
 
 async def probe_endpoint(client: httpx.AsyncClient, base_url: str, path: str) -> Dict[str, Any]:
@@ -219,6 +216,10 @@ async def analyze_agent_url(url: str) -> Dict[str, Any]:
     is_safe, reason = await is_public_url(normalized_url)
     if not is_safe:
         raise ValueError(f"Refusing to probe target: {reason}")
+
+    # Resolve apex->www / http->https style domain-level redirects once,
+    # so a site that blanket-redirects every path doesn't look dead.
+    normalized_url = await resolve_canonical_base(normalized_url)
 
     limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
     async with httpx.AsyncClient(limits=limits, timeout=8.0) as client:
