@@ -105,7 +105,10 @@ def detect_framework_and_confidence(
         scores["FastAPI"] += 0.4
         signals.append("Server header contains 'uvicorn'")
     
-    if openapi_probe.get("accessible") and openapi_probe.get("status_code") == 200:
+    if (
+        openapi_probe.get("status_code") == 200
+        and "html" not in (openapi_probe.get("content_type") or "").lower()
+    ):
         scores["FastAPI"] += 0.4
         signals.append("OpenAPI specification available at /openapi.json")
         if "fastapi" in openapi_probe.get("content_preview", "").lower():
@@ -167,6 +170,25 @@ def detect_framework_and_confidence(
     return detected_framework, confidence_score, details
 
 
+def _is_real_endpoint_signal(probe: Optional[Dict[str, Any]]) -> bool:
+    """
+    True only when a probe result is real evidence of a handler at that path,
+    not a false positive from a marketing site's SPA catch-all (200 + HTML
+    for literally any path) or a blanket redirect (3xx for literally any
+    path). 400/405 mean a real handler explicitly rejected the request -
+    strong signal. 200 only counts if the body isn't an HTML page.
+    """
+    if not probe:
+        return False
+    status = probe.get("status_code")
+    if status in (400, 405):
+        return True
+    if status == 200:
+        content_type = (probe.get("content_type") or "").lower()
+        return "html" not in content_type
+    return False
+
+
 def determine_recommended_mcp_endpoint(
     base_url: str,
     probe_results: Dict[str, Dict[str, Any]]
@@ -174,13 +196,11 @@ def determine_recommended_mcp_endpoint(
     """Determine the optimal MCP endpoint URL for the agent."""
     mcp_probe = probe_results.get("/mcp")
     sse_probe = probe_results.get("/sse")
-    
-    # If /mcp endpoint exists or responded
-    if mcp_probe and (mcp_probe.get("accessible") or mcp_probe.get("status_code") in [200, 400, 405]):
+
+    if _is_real_endpoint_signal(mcp_probe):
         return f"{base_url}/mcp"
-    
-    # If /sse endpoint exists or responded
-    if sse_probe and (sse_probe.get("accessible") or sse_probe.get("status_code") in [200, 400, 405]):
+
+    if _is_real_endpoint_signal(sse_probe):
         return f"{base_url}/sse"
 
     # Default to /mcp convention
@@ -227,10 +247,7 @@ async def analyze_agent_url(url: str) -> Dict[str, Any]:
 
     mcp_probe = endpoint_probes.get("/mcp")
     sse_probe = endpoint_probes.get("/sse")
-    has_mcp = bool(
-        (mcp_probe and (mcp_probe.get("accessible") or mcp_probe.get("status_code") in [200, 400, 405])) or
-        (sse_probe and (sse_probe.get("accessible") or sse_probe.get("status_code") in [200, 400, 405]))
-    )
+    has_mcp = _is_real_endpoint_signal(mcp_probe) or _is_real_endpoint_signal(sse_probe)
 
     if has_mcp:
         recommended_mcp = determine_recommended_mcp_endpoint(normalized_url, endpoint_probes)
