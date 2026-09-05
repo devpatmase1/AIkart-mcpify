@@ -22,13 +22,23 @@ def normalize_url(url: str) -> str:
     if not url.startswith("http://") and not url.startswith("https://"):
         url = f"https://{url}"
 
-    parsed = urlparse(url)
-    if not parsed.hostname:
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        port = parsed.port
+    except ValueError:
+        # e.g. "javascript:alert(1)" parses with a non-numeric "port" -
+        # urlparse defers that error to attribute access. Not a URL we can
+        # make sense of; let is_public_url's hostname check reject it
+        # cleanly instead of raising here.
         return url.rstrip("/")
 
-    base = f"{parsed.scheme}://{parsed.hostname}"
-    if parsed.port:
-        base += f":{parsed.port}"
+    if not hostname:
+        return url.rstrip("/")
+
+    base = f"{parsed.scheme}://{hostname}"
+    if port:
+        base += f":{port}"
     return base
 
 
