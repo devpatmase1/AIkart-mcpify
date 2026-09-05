@@ -13,48 +13,48 @@
 
   <style>
     /* ---------------------------------------------------------
-       CSS DESIGN SYSTEM & TOKENS (GitHub Dark + Cyan Electric Accent)
+       CSS DESIGN SYSTEM & TOKENS (Light + Teal/Blue Accent)
        --------------------------------------------------------- */
     :root {
-      --bg-canvas: #0D1117;
-      --bg-card: #161B22;
-      --bg-card-hover: #1C2128;
-      --bg-input: #0D1117;
-      --bg-tertiary: #21262D;
-      
-      --border-subtle: #30363D;
-      --border-accent: #00F0FF;
-      --border-hover: #8B949E;
-      
-      --accent-cyan: #00F0FF;
-      --accent-blue: #0066FF;
-      --accent-gradient: linear-gradient(135deg, #00F0FF 0%, #0066FF 100%);
-      --accent-glow: rgba(0, 240, 255, 0.2);
-      --accent-glow-strong: rgba(0, 240, 255, 0.4);
-      
-      --text-primary: #F0F6FC;
-      --text-secondary: #8B949E;
-      --text-dim: #6E7681;
-      --text-link: #58A6FF;
-      
-      --code-bg: #0A0D12;
-      --code-green: #7EE787;
-      --code-cyan: #79C0FF;
-      --code-purple: #D2A8FF;
-      --code-orange: #FFA657;
-      
-      --status-green: #3FB950;
-      --status-yellow: #D29922;
-      --status-red: #F85149;
-      
+      --bg-canvas: #FFFFFF;
+      --bg-card: #F8F9FB;
+      --bg-card-hover: #F1F3F6;
+      --bg-input: #FFFFFF;
+      --bg-tertiary: #F1F3F6;
+
+      --border-subtle: #E2E5EA;
+      --border-accent: #0891A8;
+      --border-hover: #C4C9D2;
+
+      --accent-cyan: #0891A8;
+      --accent-blue: #0052CC;
+      --accent-gradient: linear-gradient(135deg, #0891A8 0%, #0052CC 100%);
+      --accent-glow: rgba(8, 145, 168, 0.15);
+      --accent-glow-strong: rgba(8, 145, 168, 0.3);
+
+      --text-primary: #14181F;
+      --text-secondary: #57606A;
+      --text-dim: #8B949E;
+      --text-link: #0969DA;
+
+      --code-bg: #F6F8FA;
+      --code-green: #1A7F37;
+      --code-cyan: #0969DA;
+      --code-purple: #8250DF;
+      --code-orange: #BC4C00;
+
+      --status-green: #1A7F37;
+      --status-yellow: #9A6700;
+      --status-red: #CF222E;
+
       --radius-sm: 6px;
       --radius-md: 10px;
       --radius-lg: 16px;
       --radius-full: 9999px;
-      
-      --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.5);
-      --shadow-glow: 0 0 25px rgba(0, 240, 255, 0.15);
-      
+
+      --shadow-card: 0 1px 2px rgba(20, 24, 31, 0.06), 0 8px 24px rgba(20, 24, 31, 0.06);
+      --shadow-glow: 0 0 25px rgba(8, 145, 168, 0.12);
+
       --transition-fast: 0.15s ease;
       --transition-normal: 0.25s ease;
     }
@@ -74,9 +74,9 @@
       display: flex;
       flex-direction: column;
       overflow-x: hidden;
-      background-image: 
-        radial-gradient(circle at 50% 0%, rgba(0, 240, 255, 0.08) 0%, transparent 50%),
-        radial-gradient(circle at 100% 100%, rgba(0, 102, 255, 0.05) 0%, transparent 40%);
+      background-image:
+        radial-gradient(circle at 50% 0%, rgba(8, 145, 168, 0.06) 0%, transparent 50%),
+        radial-gradient(circle at 100% 100%, rgba(0, 82, 204, 0.04) 0%, transparent 40%);
       background-attachment: fixed;
     }
 
@@ -105,7 +105,7 @@
     /* Navbar */
     .navbar {
       border-bottom: 1px solid var(--border-subtle);
-      background: rgba(13, 17, 23, 0.85);
+      background: rgba(255, 255, 255, 0.85);
       backdrop-filter: blur(12px);
       position: sticky;
       top: 0;
@@ -202,8 +202,8 @@
       display: inline-flex;
       align-items: center;
       gap: 8px;
-      background: rgba(0, 240, 255, 0.08);
-      border: 1px solid rgba(0, 240, 255, 0.25);
+      background: rgba(8, 145, 168, 0.08);
+      border: 1px solid rgba(8, 145, 168, 0.25);
       color: var(--accent-cyan);
       padding: 6px 16px;
       border-radius: var(--radius-full);
@@ -212,7 +212,7 @@
       letter-spacing: 0.5px;
       text-transform: uppercase;
       margin-bottom: 20px;
-      box-shadow: 0 0 20px rgba(0, 240, 255, 0.1);
+      box-shadow: 0 0 20px rgba(8, 145, 168, 0.1);
     }
 
     .hero h1 {
@@ -221,7 +221,7 @@
       letter-spacing: -1px;
       line-height: 1.2;
       margin-bottom: 16px;
-      background: linear-gradient(180deg, #FFFFFF 0%, #8B949E 100%);
+      background: linear-gradient(180deg, #14181F 0%, #57606A 100%);
       -webkit-background-clip: text;
       -webkit-text-fill-color: transparent;
     }
@@ -286,7 +286,7 @@
 
     .url-input:focus {
       border-color: var(--accent-cyan);
-      background: #06090E;
+      background: #FFFFFF;
     }
 
     .url-input::placeholder {
@@ -295,7 +295,7 @@
 
     .btn-submit {
       background: var(--accent-gradient);
-      color: #000;
+      color: #FFFFFF;
       font-family: 'Inter', sans-serif;
       font-weight: 700;
       font-size: 0.95rem;
@@ -356,7 +356,7 @@
     .chip:hover {
       border-color: var(--accent-cyan);
       color: var(--accent-cyan);
-      background: rgba(0, 240, 255, 0.05);
+      background: rgba(8, 145, 168, 0.05);
     }
 
     /* Loading State */
@@ -373,7 +373,7 @@
     .spinner {
       width: 44px;
       height: 44px;
-      border: 3px solid rgba(0, 240, 255, 0.15);
+      border: 3px solid rgba(8, 145, 168, 0.15);
       border-top-color: var(--accent-cyan);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
@@ -480,9 +480,9 @@
     }
 
     .badge-framework {
-      background: rgba(0, 240, 255, 0.1);
+      background: rgba(8, 145, 168, 0.1);
       color: var(--accent-cyan);
-      border: 1px solid rgba(0, 240, 255, 0.3);
+      border: 1px solid rgba(8, 145, 168, 0.3);
       padding: 4px 12px;
       border-radius: var(--radius-sm);
       font-family: 'JetBrains Mono', monospace;
@@ -515,15 +515,15 @@
 
     /* Proxy Banner */
     .proxy-banner {
-      background: linear-gradient(135deg, rgba(0, 240, 255, 0.08) 0%, rgba(63, 185, 80, 0.08) 100%);
-      border: 1px solid rgba(0, 240, 255, 0.35);
+      background: linear-gradient(135deg, rgba(8, 145, 168, 0.08) 0%, rgba(63, 185, 80, 0.08) 100%);
+      border: 1px solid rgba(8, 145, 168, 0.35);
       border-radius: var(--radius-lg);
       padding: 20px 24px;
       margin-bottom: 28px;
       display: flex;
       flex-direction: column;
       gap: 12px;
-      box-shadow: 0 4px 20px rgba(0, 240, 255, 0.12);
+      box-shadow: 0 4px 20px rgba(8, 145, 168, 0.12);
     }
 
     .proxy-banner-header {
@@ -575,7 +575,7 @@
 
     .tab-bar {
       display: flex;
-      background: #11151C;
+      background: #F6F8FA;
       border-bottom: 1px solid var(--border-subtle);
       padding: 0 16px;
       gap: 8px;
@@ -629,8 +629,8 @@
       justify-content: space-between;
       align-items: center;
       padding: 12px 20px;
-      background: rgba(255, 255, 255, 0.02);
-      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      background: rgba(20, 24, 31, 0.02);
+      border-bottom: 1px solid rgba(20, 24, 31, 0.06);
       font-size: 0.78rem;
       color: var(--text-dim);
     }
@@ -654,7 +654,7 @@
     .btn-copy:hover {
       border-color: var(--accent-cyan);
       color: var(--accent-cyan);
-      background: rgba(0, 240, 255, 0.08);
+      background: rgba(8, 145, 168, 0.08);
     }
 
     .btn-copy.copied {
@@ -992,27 +992,6 @@
         </div>
 
       </div>
-
-      <!-- Features Grid -->
-      <section class="features-grid">
-        <div class="feature-card">
-          <div class="feature-icon">🔍</div>
-          <h3>Auto-Signature Detection</h3>
-          <p>Scans endpoints for FastAPI, LangChain/LangServe, Flask, Express, and Next.js markers automatically with confidence scoring.</p>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon">🔌</div>
-          <h3>Dual-Transport MCP</h3>
-          <p>Supports both HTTP Streamable (MCP 2024-11 standard) and Server-Sent Events (SSE) for maximum client compatibility.</p>
-        </div>
-
-        <div class="feature-card">
-          <div class="feature-icon">🛠️</div>
-          <h3>Zero-Config Integration</h3>
-          <p>Instant ready-to-paste JSON configurations and setup instructions tailored for Claude Desktop, Cursor, and VS Code.</p>
-        </div>
-      </section>
 
     </div>
   </main>
