@@ -23,6 +23,7 @@ from app.mcp_handler import router as mcp_router, mcp
 from app.proxy import proxy_manager
 from app.generator import generate_proxy_config
 from app.security import is_public_url, resolve_canonical_base, normalize_url
+from app.analyzer import verify_mcp_handshake
 from app.rate_limit import limiter
 
 # Load environment variables
@@ -233,16 +234,11 @@ async def create_proxy_endpoint(request: Request, payload: CreateProxyRequest):
     # so a site that blanket-redirects every path doesn't look dead.
     normalized_url = await resolve_canonical_base(normalized_url)
 
-    has_mcp = False
-    try:
-        # No follow_redirects: a redirect response isn't re-checked against
-        # is_public_url, so following it could bypass the SSRF guard above.
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            resp = await client.get(f"{normalized_url}/mcp")
-            if resp.status_code in [200, 400, 405]:
-                has_mcp = True
-    except Exception:
-        has_mcp = False
+    # Confirm via a real MCP JSON-RPC handshake rather than trusting a GET
+    # probe's status code alone - a route coincidentally living at /mcp for
+    # unrelated reasons (seen in the wild) can otherwise look like a hit.
+    async with httpx.AsyncClient(timeout=5.0) as client:
+        has_mcp = await verify_mcp_handshake(client, normalized_url)
 
     proxy_data = await proxy_manager.create_proxy(target_url=normalized_url, has_mcp=has_mcp, api_key=payload.api_key)
     proxy_id = proxy_data["proxy_id"]

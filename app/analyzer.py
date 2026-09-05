@@ -23,6 +23,50 @@ COMMON_ENDPOINTS = [
 # imports of app.analyzer.normalize_url.
 
 
+async def verify_mcp_handshake(client: httpx.AsyncClient, base_url: str) -> bool:
+    """
+    A GET probe's status code can be fooled by a route that coincidentally
+    lives at /mcp for reasons unrelated to MCP (seen in the wild: a public
+    API returning 405 + "Allow: POST" at /mcp, from routing conventions in
+    its own framework, with zero connection to Model Context Protocol).
+    Confirm a REAL MCP server by attempting the actual JSON-RPC
+    "initialize" handshake and checking the response is JSON-RPC shaped,
+    rather than trusting the GET probe's status code alone.
+    """
+    try:
+        resp = await client.post(
+            f"{base_url}/mcp",
+            json={
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {},
+                    "clientInfo": {"name": "mcpify-probe", "version": "1.0"},
+                },
+            },
+            headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"},
+            timeout=6.0,
+        )
+    except Exception:
+        return False
+
+    if resp.status_code >= 400:
+        return False
+    if "html" in (resp.headers.get("content-type") or "").lower():
+        return False
+
+    try:
+        body_text = resp.text[:2000]
+    except Exception:
+        return False
+
+    # Real MCP initialize responses are JSON-RPC: {"jsonrpc":"2.0", ...,
+    # "result": {...}} (plain JSON or SSE-wrapped as "data: {...}").
+    return '"jsonrpc"' in body_text and ('"result"' in body_text or '"error"' in body_text)
+
+
 async def probe_endpoint(client: httpx.AsyncClient, base_url: str, path: str) -> Dict[str, Any]:
     """Probe an individual endpoint on the target agent."""
     target_url = f"{base_url}{path}"
@@ -248,7 +292,12 @@ async def analyze_agent_url(url: str) -> Dict[str, Any]:
 
     mcp_probe = endpoint_probes.get("/mcp")
     sse_probe = endpoint_probes.get("/sse")
-    has_mcp = _is_real_endpoint_signal(mcp_probe) or _is_real_endpoint_signal(sse_probe)
+    has_mcp = False
+    if _is_real_endpoint_signal(mcp_probe):
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            has_mcp = await verify_mcp_handshake(client, normalized_url)
+    if not has_mcp:
+        has_mcp = _is_real_endpoint_signal(sse_probe)
 
     if has_mcp:
         recommended_mcp = determine_recommended_mcp_endpoint(normalized_url, endpoint_probes)
