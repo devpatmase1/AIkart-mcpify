@@ -8,12 +8,21 @@ import httpx
 
 def normalize_url(url: str) -> str:
     """
-    Ensure URL has a scheme and reduce it to just scheme+host(+port),
-    discarding any path/query/fragment. People commonly paste a full page
-    URL copied from their browser (e.g. "https://example.com/landing/")
-    rather than the bare domain - probing/proxying under that path (e.g.
-    "/landing/mcp") would target the wrong thing, since every endpoint
-    path elsewhere in this app is appended directly onto this base.
+    Ensure URL has a scheme and strip query string/fragment - those are
+    never meaningful as part of a base URL. The path IS kept: plenty of
+    real APIs are deliberately hosted under a path on a shared domain
+    (e.g. "https://dog.ceo/api", "https://api.stripe.com/v1") and every
+    endpoint call this app makes is built by appending onto this base, so
+    dropping that path silently breaks those APIs - verified live against
+    dog.ceo/api, where every call_api call 404'd once the /api prefix was
+    lost. This used to strip the path too (to handle someone pasting a
+    full marketing-page URL from their browser, e.g.
+    "https://example.com/landing/page?x=1", rather than the bare domain -
+    see git history), but that traded a silent wrong-data bug (a real API
+    quietly returning 404s from the wrong base) for a softer, recoverable
+    one (a mis-scoped page still yields a working proxy, just possibly
+    probed under the wrong sub-path - the user can retry with the
+    corrected URL if so). Silent wrong data is worse, so path wins.
 
     Shared by analyzer.py, proxy.py, and main.py so a URL is normalized
     the same way no matter which entry point receives it.
@@ -39,6 +48,9 @@ def normalize_url(url: str) -> str:
     base = f"{parsed.scheme}://{hostname}"
     if port:
         base += f":{port}"
+    path = parsed.path.rstrip("/")
+    if path:
+        base += path
     return base
 
 
