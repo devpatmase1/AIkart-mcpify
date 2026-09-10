@@ -285,6 +285,26 @@ async def proxy_health_endpoint(proxy_id: str):
     status_code = None
     latency_ms = None
 
+    # target_url's safety was only checked ONCE, at proxy-creation time -
+    # DNS isn't static, so re-check now too (see _revalidate_target_safety
+    # in app/proxy.py for the full DNS-rebinding rationale: a domain could
+    # resolve to a public IP at creation and be repointed to an internal
+    # one by the time this endpoint is actually hit).
+    is_safe, reason = await is_public_url(target_url)
+    if not is_safe:
+        return {
+            "proxy_id": proxy_id,
+            "proxy_status": "active",
+            "target_url": target_url,
+            "target_reachable": False,
+            "target_status_code": None,
+            "latency_ms": None,
+            "error": f"Refusing to check target: {reason}",
+            "has_mcp": proxy.get("has_mcp", False),
+            "created_at": proxy.get("created_at"),
+            "last_used": proxy.get("last_used")
+        }
+
     start_time = asyncio.get_event_loop().time()
     try:
         # No follow_redirects: this proxy's target_url was only SSRF-checked

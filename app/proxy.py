@@ -7,9 +7,29 @@ from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 import httpx
 
-from app.security import normalize_url
+from app.security import normalize_url, is_public_url
 
 logger = logging.getLogger("mcpify")
+
+
+async def _revalidate_target_safety(target_url: str) -> Optional[str]:
+    """
+    Returns an error reason if target_url is unsafe to connect to right
+    now, or None if it's still safe.
+
+    target_url's safety was previously only checked ONCE, at
+    proxy-creation time (main.py's /proxy/create) - but DNS isn't static.
+    A malicious target's domain can resolve to a public IP at creation
+    time (passing that check and getting a proxy created), then be
+    repointed to an internal/cloud-metadata address by the time any
+    actual tool call is made - a classic DNS-rebinding SSRF bypass this
+    proxy was otherwise completely unprotected against, since
+    forward_request/call_api/health_check all connected to target_url
+    directly with no re-check at all. Re-validating on every outbound
+    call closes that gap, at the cost of one extra DNS lookup per call.
+    """
+    is_safe, reason = await is_public_url(target_url)
+    return None if is_safe else reason
 
 REDIS_KEY_PREFIX = "mcpify:proxy:"
 REDIS_INDEX_PREFIX = "mcpify:proxy_by_url:"
@@ -82,8 +102,30 @@ class ProxyMCPManager:
                 "last_used": now_str,
                 "status": "active"
             }
+
+            # Atomic claim (SET ... NX), not a plain set after the GET
+            # above: two concurrent create_proxy calls for the same
+            # brand-new target_url would otherwise both see no existing
+            # index entry, both create their own proxy_id, and both write
+            # the index - whichever write lands last silently orphans the
+            # other's proxy record (still valid, just unreachable via
+            # dedup lookup). NX makes only one of them actually win the
+            # index slot; the loser reuses the winner's record instead of
+            # leaving its own orphaned.
+            claimed = await redis.set(f"{REDIS_INDEX_PREFIX}{target_url}", proxy_id, nx=True)
+            if not claimed:
+                winner_id = await redis.get(f"{REDIS_INDEX_PREFIX}{target_url}")
+                winner = await self._redis_get_proxy(redis, winner_id) if winner_id else None
+                if winner:
+                    winner["last_used"] = now_str
+                    if api_key:
+                        winner["api_key"] = api_key
+                    await self._redis_save_proxy(redis, winner)
+                    return winner
+                # Winner's own record vanished somehow - fall through and
+                # save ours anyway rather than returning nothing usable.
+
             await self._redis_save_proxy(redis, proxy_data)
-            await redis.set(f"{REDIS_INDEX_PREFIX}{target_url}", proxy_id)
             return proxy_data
 
         # In-memory fallback
@@ -189,7 +231,7 @@ class ProxyMCPManager:
         has_mcp = proxy.get("has_mcp", False)
 
         # If target has native /mcp, attempt forwarding direct MCP JSON-RPC call
-        if has_mcp:
+        if has_mcp and await _revalidate_target_safety(target_url) is None:
             target_mcp_url = f"{target_url}/mcp"
             headers = {"Content-Type": "application/json"}
             if proxy.get("api_key"):
@@ -314,6 +356,19 @@ class ProxyMCPManager:
                     endpoint = f"/{endpoint}"
                 full_target_url = f"{target_url}{endpoint}"
 
+                unsafe_reason = await _revalidate_target_safety(target_url)
+                if unsafe_reason:
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": {
+                            "content": [
+                                {"type": "text", "text": f"Refusing to call target: {unsafe_reason}"}
+                            ],
+                            "isError": True
+                        }
+                    }
+
                 headers = {}
                 if proxy.get("api_key"):
                     headers["Authorization"] = f"Bearer {proxy['api_key']}"
@@ -393,6 +448,21 @@ class ProxyMCPManager:
                 }
 
             elif tool_name == "health_check":
+                unsafe_reason = await _revalidate_target_safety(target_url)
+                if unsafe_reason:
+                    res = {
+                        "target_url": target_url,
+                        "reachable": False,
+                        "error": f"Refusing to call target: {unsafe_reason}"
+                    }
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": {
+                            "content": [{"type": "text", "text": json.dumps(res, indent=2)}],
+                            "isError": True
+                        }
+                    }
                 try:
                     health_url = f"{target_url}/health"
                     async with httpx.AsyncClient(timeout=8.0) as client:
