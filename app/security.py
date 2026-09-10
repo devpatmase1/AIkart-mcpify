@@ -1,7 +1,7 @@
 import asyncio
 import ipaddress
 import socket
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 import httpx
 
@@ -109,31 +109,39 @@ async def resolve_canonical_base(url: str) -> str:
     completely dead: every probe just bounces off a 3xx and the proxy's
     actual tool calls would too.
 
-    This resolves that ONE-TIME, at proxy-creation time: follow redirects
-    here (capped, so a redirect chain can't run away), then re-validate
-    the FINAL destination against is_public_url before trusting it - a
-    malicious target could otherwise pass the initial check on its own
-    public URL and redirect everything after to an internal address.
-    Falls back to the original URL on any failure (timeout, malformed
-    response, or an unsafe final destination) rather than raising, since
-    this is a best-effort convenience, not a required step.
+    This resolves that ONE-TIME, at proxy-creation time - but validates
+    EACH hop's destination against is_public_url BEFORE connecting to it,
+    not just the final one. httpx's own follow_redirects=True would
+    connect to every hop first and only let us inspect the destination
+    afterward - a malicious target's first hop could point straight at an
+    internal address and that request would already have happened by the
+    time anything checked it (a "blind" SSRF: no response body comes
+    back to the caller, but the request itself still reaches the internal
+    target). Falls back to the original URL on any failure (timeout,
+    malformed response, too many hops, or an unsafe hop) rather than
+    raising, since this is a best-effort convenience, not a required step.
     """
+    current = url
     try:
-        async with httpx.AsyncClient(follow_redirects=True, max_redirects=5, timeout=6.0) as client:
-            resp = await client.get(url)
+        async with httpx.AsyncClient(timeout=6.0) as client:
+            for _ in range(5):
+                resp = await client.get(current)
+                if resp.status_code not in (301, 302, 303, 307, 308):
+                    break
+                location = resp.headers.get("location")
+                if not location:
+                    break
+                next_url = urljoin(current, location)
+                is_safe, _ = await is_public_url(next_url)
+                if not is_safe:
+                    return url
+                current = next_url
+            else:
+                # Exhausted the hop budget without landing on a final page.
+                return url
     except Exception:
         return url
 
-    resolved = resp.url
-    if not resolved.host:
+    if current.rstrip("/") == url.rstrip("/"):
         return url
-
-    base = f"{resolved.scheme}://{resolved.host}"
-    if resolved.port and not ((resolved.scheme == "https" and resolved.port == 443) or (resolved.scheme == "http" and resolved.port == 80)):
-        base += f":{resolved.port}"
-
-    if base.rstrip("/") == url.rstrip("/"):
-        return url
-
-    is_safe, _ = await is_public_url(base)
-    return base if is_safe else url
+    return normalize_url(current)

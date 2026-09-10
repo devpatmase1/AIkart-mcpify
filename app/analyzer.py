@@ -67,6 +67,62 @@ async def verify_mcp_handshake(client: httpx.AsyncClient, base_url: str) -> bool
     return '"jsonrpc"' in body_text and ('"result"' in body_text or '"error"' in body_text)
 
 
+async def probe_sse_endpoint(client: httpx.AsyncClient, base_url: str) -> Dict[str, Any]:
+    """
+    A plain buffered GET (what probe_endpoint uses for every other path)
+    reads the FULL response body before returning - but a real SSE stream
+    never closes its body, so that GET would just hang until the timeout
+    and get reported as inaccessible. A genuine SSE-based MCP server would
+    therefore always look dead. Stream instead and read only a small
+    prefix, enough to tell whether this looks like a live event stream,
+    without waiting for it to end.
+    """
+    path = "/sse"
+    target_url = f"{base_url}{path}"
+    try:
+        async with client.stream("GET", target_url, timeout=6.0, headers={"Accept": "text/event-stream"}) as response:
+            content_type = response.headers.get("content-type", "")
+            is_event_stream = "text/event-stream" in content_type.lower()
+            content_preview = ""
+            if response.status_code < 400 and is_event_stream:
+                try:
+                    async def _read_prefix():
+                        nonlocal content_preview
+                        async for chunk in response.aiter_text():
+                            content_preview += chunk
+                            if len(content_preview) >= 200 or "\n\n" in content_preview:
+                                return
+                    # A live SSE connection never closes on its own, and
+                    # some servers are slow to react to the client giving
+                    # up on the read - bound just the read itself so a
+                    # slow connection-teardown doesn't eat the full outer
+                    # timeout after we already have what we need.
+                    await asyncio.wait_for(_read_prefix(), timeout=3.0)
+                except Exception:
+                    pass
+            is_accessible = response.status_code < 400 or response.status_code == 405
+            return {
+                "path": path,
+                "url": str(response.url),
+                "status_code": response.status_code,
+                "accessible": is_accessible,
+                "headers": dict(response.headers),
+                "content_type": content_type,
+                "content_preview": content_preview[:2000],
+            }
+    except httpx.RequestError as e:
+        return {
+            "path": path,
+            "url": target_url,
+            "status_code": None,
+            "accessible": False,
+            "error": str(e),
+            "headers": {},
+            "content_type": "",
+            "content_preview": ""
+        }
+
+
 async def probe_endpoint(client: httpx.AsyncClient, base_url: str, path: str) -> Dict[str, Any]:
     """Probe an individual endpoint on the target agent."""
     target_url = f"{base_url}{path}"
@@ -267,9 +323,14 @@ async def analyze_agent_url(url: str) -> Dict[str, Any]:
 
     limits = httpx.Limits(max_keepalive_connections=5, max_connections=10)
     async with httpx.AsyncClient(limits=limits, timeout=8.0) as client:
-        # Probe root and common endpoints concurrently
+        # Probe root and common endpoints concurrently. /sse gets a
+        # streaming probe (see probe_sse_endpoint) since a real event
+        # stream would otherwise hang the buffered GET every other path
+        # uses until it times out.
         tasks = [probe_endpoint(client, normalized_url, "")] + [
-            probe_endpoint(client, normalized_url, path) for path in COMMON_ENDPOINTS
+            probe_sse_endpoint(client, normalized_url) if path == "/sse"
+            else probe_endpoint(client, normalized_url, path)
+            for path in COMMON_ENDPOINTS
         ]
         results = await asyncio.gather(*tasks, return_exceptions=False)
 
