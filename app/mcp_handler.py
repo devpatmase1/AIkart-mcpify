@@ -119,7 +119,7 @@ async def run_guide(url: str, platform: str = "claude_desktop") -> Dict[str, Any
             "steps": [
                 "1. Open Cursor Settings (Cmd+, or Ctrl+,).",
                 "2. Navigate to Features > MCP.",
-                f"3. Click 'Add New MCP Server'. Name: '{server_name}', Type: 'sse', URL: '{mcp_endpoint}'.",
+                f"3. Click 'Add New MCP Server'. Name: '{server_name}', Type: 'http', URL: '{mcp_endpoint}'.",
                 "4. Verify the green active status indicator."
             ],
             "config_snippet": configs["cursor_vscode"]

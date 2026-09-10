@@ -34,7 +34,7 @@ def _build_platform_configs(endpoint: str, server_key: str) -> Dict[str, Any]:
             "mcpServers": {
                 server_key: {
                     "url": endpoint,
-                    "type": "sse"
+                    "type": "http"
                 }
             }
         },
@@ -49,7 +49,7 @@ def _build_platform_configs(endpoint: str, server_key: str) -> Dict[str, Any]:
             "mcpServers": {
                 server_key: {
                     "url": endpoint,
-                    "type": "sse",
+                    "type": "http",
                     "disabled": False,
                     "autoApprove": []
                 }
@@ -64,7 +64,11 @@ def _build_platform_configs(endpoint: str, server_key: str) -> Dict[str, Any]:
             }
         },
         "claude_code_cli": {
-            "command": f"claude mcp add --transport sse {server_key} {endpoint}"
+            # http (Streamable HTTP, POST-based), not sse: both our own
+            # proxy and most native /mcp endpoints (verified live against
+            # catfact.ninja) only answer the JSON-RPC POST transport - a
+            # GET-based SSE handshake gets a 405 and "Failed to connect".
+            "command": f"claude mcp add --transport http {server_key} {endpoint}"
         }
     }
 
