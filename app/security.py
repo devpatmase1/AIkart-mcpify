@@ -54,12 +54,35 @@ def normalize_url(url: str) -> str:
     return base
 
 
+_NAT64_WELL_KNOWN_PREFIX = ipaddress.ip_network("64:ff9b::/96")
+
+
 def _is_unsafe_ip(ip_str: str) -> bool:
-    """Returns True if the IP is private, loopback, link-local, reserved, or otherwise internal."""
+    """
+    Returns True if the IP is private, loopback, link-local, reserved, or
+    otherwise internal.
+
+    64:ff9b::/96 (RFC 6052's NAT64 "Well-Known Prefix") is a special case:
+    it's just an IPv6 wrapper around a real IPv4 address in its last 32
+    bits, synthesized by DNS64 on IPv6-only/NAT64 networks for IPv4-only
+    hosts - verified live (stripe.com and badssl.com resolved to this on
+    this network). Python's ipaddress module marks the WHOLE prefix
+    is_reserved=True (it's a special-purpose IANA block), which would
+    reject every ordinary public IPv4-only site whenever DNS64
+    synthesizes this instead of returning a plain A record - unwrap it
+    and check the REAL embedded destination instead of the wrapper.
+    Recurses so a NAT64 address wrapping an actually-private IPv4 (e.g.
+    64:ff9b::7f00:1 embeds 127.0.0.1) still correctly gets rejected.
+    """
     try:
         ip = ipaddress.ip_address(ip_str)
     except ValueError:
         return True
+
+    if isinstance(ip, ipaddress.IPv6Address) and ip in _NAT64_WELL_KNOWN_PREFIX:
+        embedded_ipv4 = ipaddress.IPv4Address(ip.packed[-4:])
+        return _is_unsafe_ip(str(embedded_ipv4))
+
     return (
         ip.is_private
         or ip.is_loopback

@@ -1,5 +1,6 @@
 import asyncio
 import re
+import uuid
 from typing import Dict, List, Any, Optional
 import httpx
 from app.proxy import proxy_manager
@@ -23,7 +24,31 @@ COMMON_ENDPOINTS = [
 # imports of app.analyzer.normalize_url.
 
 
-async def verify_mcp_handshake(client: httpx.AsyncClient, base_url: str) -> bool:
+async def _is_401_endpoint_specific(client: httpx.AsyncClient, base_url: str) -> bool:
+    """
+    Confirms a 401 seen at /mcp is specific to that endpoint, not a
+    domain-wide "the whole site needs login" wall (a password-protected
+    staging deploy, for instance) that would 401 literally any path -
+    which would otherwise be misread as "real OAuth-protected MCP server"
+    too. Checks a random, definitely-nonexistent path - if THAT also
+    401s, the /mcp 401 isn't meaningful MCP-specific evidence.
+
+    The nonce deliberately does NOT start with "mcp": verified live that
+    Sentry's and Explorium's real MCP servers protect any path with that
+    PREFIX (e.g. "/mcpify-anything" also 401s, not just the exact "/mcp"
+    segment) - a nonce starting with "mcp" would trip that same rule and
+    wrongly look like a domain-wide wall instead of confirming it.
+    """
+    nonce_path = f"/xyz-probe-nonce-{uuid.uuid4().hex}"
+    try:
+        resp = await client.get(f"{base_url}{nonce_path}", timeout=5.0)
+        return resp.status_code != 401
+    except Exception:
+        # Can't confirm either way - safer to not trust the original 401.
+        return False
+
+
+async def verify_mcp_handshake(client: httpx.AsyncClient, base_url: str, api_key: Optional[str] = None) -> bool:
     """
     A GET probe's status code can be fooled by a route that coincidentally
     lives at /mcp for reasons unrelated to MCP (seen in the wild: a public
@@ -42,7 +67,24 @@ async def verify_mcp_handshake(client: httpx.AsyncClient, base_url: str) -> bool
     own timeout on exactly the servers it's trying to confirm, reporting
     a real MCP server as not one. Read only a bounded prefix instead, the
     same fix already applied to probe_sse_endpoint for the same reason.
+
+    api_key, if given, is sent as a Bearer token - plenty of real MCP
+    servers are OAuth-protected (Sentry, Supermetrics, Explorium's Vibe
+    Prospecting all verified live) and need it to actually answer.
+    Without a valid key, or when none is supplied, a 401 WITH a
+    WWW-Authenticate challenge on this /mcp POST specifically (not a
+    domain-wide auth wall - verified on the same three real servers that
+    an unrelated random path 404s, not 401s, so this evidence is specific
+    to the endpoint, not "the whole site needs login") is still strong,
+    MCP-shaped evidence that this is a real MCP server that needs
+    credentials, treated as a positive result: reporting has_mcp=False
+    here would fall back to a generic REST proxy whose call_api/get_info
+    tools have no real REST API to call at all on these targets, which is
+    worse than an honest "this is MCP, but needs a key" signal.
     """
+    headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
     try:
         async with client.stream(
             "POST",
@@ -57,9 +99,11 @@ async def verify_mcp_handshake(client: httpx.AsyncClient, base_url: str) -> bool
                     "clientInfo": {"name": "mcpify-probe", "version": "1.0"},
                 },
             },
-            headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"},
+            headers=headers,
             timeout=6.0,
         ) as resp:
+            if resp.status_code == 401 and any(k.lower() == "www-authenticate" for k in resp.headers):
+                return await _is_401_endpoint_specific(client, base_url)
             if resp.status_code >= 400:
                 return False
             if "html" in (resp.headers.get("content-type") or "").lower():
@@ -305,6 +349,25 @@ def _is_real_endpoint_signal(probe: Optional[Dict[str, Any]]) -> bool:
     return False
 
 
+def _looks_like_oauth_protected_mcp(probe: Optional[Dict[str, Any]]) -> bool:
+    """
+    Deliberately separate from _is_real_endpoint_signal, not folded into
+    it: that function is shared with the unverified /sse fallback (see
+    _is_real_sse_mcp_signal's docstring for why a shared, generically
+    "some handler exists" signal caused a false positive there), and a
+    401 is common for all sorts of unrelated reasons on all sorts of
+    paths. This only gates whether to attempt an authenticated
+    verify_mcp_handshake at all - the strictness is verify_mcp_handshake's
+    job. Kept narrow: only 401 + WWW-Authenticate specifically at /mcp.
+    """
+    if not probe:
+        return False
+    if probe.get("status_code") != 401:
+        return False
+    headers = probe.get("headers") or {}
+    return any(k.lower() == "www-authenticate" for k in headers)
+
+
 def _is_real_sse_mcp_signal(probe: Optional[Dict[str, Any]]) -> bool:
     """
     Confirms an actual live SSE stream, not just "some handler exists here".
@@ -393,7 +456,7 @@ async def analyze_agent_url(url: str) -> Dict[str, Any]:
     mcp_probe = endpoint_probes.get("/mcp")
     sse_probe = endpoint_probes.get("/sse")
     has_mcp = False
-    if _is_real_endpoint_signal(mcp_probe):
+    if _is_real_endpoint_signal(mcp_probe) or _looks_like_oauth_protected_mcp(mcp_probe):
         async with httpx.AsyncClient(timeout=8.0) as client:
             has_mcp = await verify_mcp_handshake(client, normalized_url)
     if not has_mcp:
