@@ -252,6 +252,10 @@ async def create_proxy_endpoint(request: Request, payload: CreateProxyRequest):
         "target_url": proxy_data["target_url"],
         "claude_desktop_config": configs["claude_desktop"],
         "cursor_config": configs["cursor_vscode"],
+        "windsurf_config": configs["windsurf"],
+        "cline_config": configs["cline"],
+        "vscode_config": configs["vscode"],
+        "claude_code_cli_config": configs["claude_code_cli"],
         "status": proxy_data["status"]
     }
 

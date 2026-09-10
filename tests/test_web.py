@@ -30,3 +30,7 @@ def test_generate_config():
     assert "detected_framework" in data["analysis"]
     assert "claude_desktop" in data["configs"]
     assert "cursor_vscode" in data["configs"]
+    assert "windsurf" in data["configs"]
+    assert "cline" in data["configs"]
+    assert "vscode" in data["configs"]
+    assert "claude_code_cli" in data["configs"]
