@@ -250,6 +250,82 @@
       box-shadow: var(--shadow-card), var(--shadow-glow);
     }
 
+    .compat-section {
+      margin-bottom: 40px;
+    }
+
+    .compat-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 12px;
+    }
+
+    .compat-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    @media (max-width: 860px) {
+      .compat-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .compat-col {
+      background: var(--bg-card);
+      border: 1px solid var(--border-subtle);
+      border-top: 3px solid var(--status-green);
+      border-radius: var(--radius-lg);
+      padding: 18px 20px;
+    }
+
+    .compat-col.warn {
+      border-top-color: var(--status-yellow);
+    }
+
+    .compat-col.no {
+      border-top-color: var(--status-red);
+    }
+
+    .compat-col-head {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      font-size: 0.9rem;
+      margin-bottom: 10px;
+      color: var(--text-primary);
+    }
+
+    .compat-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .compat-list li {
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+      line-height: 1.5;
+      padding-left: 14px;
+      position: relative;
+    }
+
+    .compat-list li::before {
+      content: "\2022";
+      position: absolute;
+      left: 0;
+      color: var(--text-dim);
+    }
+
+    .compat-list li strong {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
     .input-group {
       display: flex;
       gap: 12px;
@@ -886,6 +962,38 @@
           <button type="button" class="chip" onclick="fillUrl('http://127.0.0.1:10000')">Localhost (MCPify Self-Probe)</button>
           <button type="button" class="chip" onclick="fillUrl('https://fastapi.tiangolo.com')">FastAPI Docs</button>
           <button type="button" class="chip" onclick="fillUrl('https://httpbin.org')">httpbin.org</button>
+        </div>
+      </section>
+
+      <!-- Compatibility Guide -->
+      <section class="compat-section">
+        <div class="compat-title">What kind of links work?</div>
+        <div class="compat-grid">
+          <div class="compat-col">
+            <div class="compat-col-head">✅ Works great</div>
+            <ul class="compat-list">
+              <li><strong>Real MCP servers</strong> — auto-detected and connected directly, no proxy needed (Streamable HTTP or SSE transport)</li>
+              <li><strong>Public REST APIs</strong> — automatically wrapped into MCP tools (call_api, get_info, health_check)</li>
+              <li><strong>APIs hosted under a path</strong> — e.g. api.example.com/v1, example.com/api</li>
+              <li><strong>Protected APIs with a Bearer token</strong> — pass your API key and it's forwarded automatically</li>
+            </ul>
+          </div>
+          <div class="compat-col warn">
+            <div class="compat-col-head">⚠️ Works, with limits</div>
+            <ul class="compat-list">
+              <li><strong>Marketing / docs-only sites</strong> — a proxy still gets created, but tool calls won't return real data if there's no actual API behind it</li>
+              <li><strong>Auth beyond a Bearer token</strong> — OAuth flows, custom auth headers, or cookie-based login aren't supported yet</li>
+              <li><strong>Very slow APIs</strong> — calls time out after ~15 seconds</li>
+            </ul>
+          </div>
+          <div class="compat-col no">
+            <div class="compat-col-head">❌ Won't work</div>
+            <ul class="compat-list">
+              <li><strong>Private / internal / localhost URLs</strong> — blocked for security, prevents SSRF attacks</li>
+              <li><strong>Unreachable or non-existent domains</strong> — nothing there to connect to</li>
+              <li><strong>Malformed URLs</strong> — refused cleanly with an error instead of crashing</li>
+            </ul>
+          </div>
         </div>
       </section>
 
