@@ -102,8 +102,30 @@ class ProxyMCPManager:
                 "last_used": now_str,
                 "status": "active"
             }
+
+            # Atomic claim (SET ... NX), not a plain set after the GET
+            # above: two concurrent create_proxy calls for the same
+            # brand-new target_url would otherwise both see no existing
+            # index entry, both create their own proxy_id, and both write
+            # the index - whichever write lands last silently orphans the
+            # other's proxy record (still valid, just unreachable via
+            # dedup lookup). NX makes only one of them actually win the
+            # index slot; the loser reuses the winner's record instead of
+            # leaving its own orphaned.
+            claimed = await redis.set(f"{REDIS_INDEX_PREFIX}{target_url}", proxy_id, nx=True)
+            if not claimed:
+                winner_id = await redis.get(f"{REDIS_INDEX_PREFIX}{target_url}")
+                winner = await self._redis_get_proxy(redis, winner_id) if winner_id else None
+                if winner:
+                    winner["last_used"] = now_str
+                    if api_key:
+                        winner["api_key"] = api_key
+                    await self._redis_save_proxy(redis, winner)
+                    return winner
+                # Winner's own record vanished somehow - fall through and
+                # save ours anyway rather than returning nothing usable.
+
             await self._redis_save_proxy(redis, proxy_data)
-            await redis.set(f"{REDIS_INDEX_PREFIX}{target_url}", proxy_id)
             return proxy_data
 
         # In-memory fallback
