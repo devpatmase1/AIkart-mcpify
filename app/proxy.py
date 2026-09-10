@@ -7,9 +7,29 @@ from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 import httpx
 
-from app.security import normalize_url
+from app.security import normalize_url, is_public_url
 
 logger = logging.getLogger("mcpify")
+
+
+async def _revalidate_target_safety(target_url: str) -> Optional[str]:
+    """
+    Returns an error reason if target_url is unsafe to connect to right
+    now, or None if it's still safe.
+
+    target_url's safety was previously only checked ONCE, at
+    proxy-creation time (main.py's /proxy/create) - but DNS isn't static.
+    A malicious target's domain can resolve to a public IP at creation
+    time (passing that check and getting a proxy created), then be
+    repointed to an internal/cloud-metadata address by the time any
+    actual tool call is made - a classic DNS-rebinding SSRF bypass this
+    proxy was otherwise completely unprotected against, since
+    forward_request/call_api/health_check all connected to target_url
+    directly with no re-check at all. Re-validating on every outbound
+    call closes that gap, at the cost of one extra DNS lookup per call.
+    """
+    is_safe, reason = await is_public_url(target_url)
+    return None if is_safe else reason
 
 REDIS_KEY_PREFIX = "mcpify:proxy:"
 REDIS_INDEX_PREFIX = "mcpify:proxy_by_url:"
@@ -189,7 +209,7 @@ class ProxyMCPManager:
         has_mcp = proxy.get("has_mcp", False)
 
         # If target has native /mcp, attempt forwarding direct MCP JSON-RPC call
-        if has_mcp:
+        if has_mcp and await _revalidate_target_safety(target_url) is None:
             target_mcp_url = f"{target_url}/mcp"
             headers = {"Content-Type": "application/json"}
             if proxy.get("api_key"):
@@ -314,6 +334,19 @@ class ProxyMCPManager:
                     endpoint = f"/{endpoint}"
                 full_target_url = f"{target_url}{endpoint}"
 
+                unsafe_reason = await _revalidate_target_safety(target_url)
+                if unsafe_reason:
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": {
+                            "content": [
+                                {"type": "text", "text": f"Refusing to call target: {unsafe_reason}"}
+                            ],
+                            "isError": True
+                        }
+                    }
+
                 headers = {}
                 if proxy.get("api_key"):
                     headers["Authorization"] = f"Bearer {proxy['api_key']}"
@@ -393,6 +426,21 @@ class ProxyMCPManager:
                 }
 
             elif tool_name == "health_check":
+                unsafe_reason = await _revalidate_target_safety(target_url)
+                if unsafe_reason:
+                    res = {
+                        "target_url": target_url,
+                        "reachable": False,
+                        "error": f"Refusing to call target: {unsafe_reason}"
+                    }
+                    return {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": {
+                            "content": [{"type": "text", "text": json.dumps(res, indent=2)}],
+                            "isError": True
+                        }
+                    }
                 try:
                     health_url = f"{target_url}/health"
                     async with httpx.AsyncClient(timeout=8.0) as client:
