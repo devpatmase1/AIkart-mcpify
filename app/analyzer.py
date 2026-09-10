@@ -305,6 +305,26 @@ def _is_real_endpoint_signal(probe: Optional[Dict[str, Any]]) -> bool:
     return False
 
 
+def _is_real_sse_mcp_signal(probe: Optional[Dict[str, Any]]) -> bool:
+    """
+    Confirms an actual live SSE stream, not just "some handler exists here".
+    Unlike _is_real_endpoint_signal, this is used with NO further
+    verification step afterward (there's no SSE equivalent of
+    verify_mcp_handshake), so it has to be strict on its own: many sites
+    return 400/405/406 for an unrelated reason on almost any path (seen
+    live on github.com/sse: a generic "Accept header not supported" 406
+    from GitHub's own framework, nothing to do with MCP) - trusting those
+    status codes here the way the gate-only _is_real_endpoint_signal does
+    would call an ordinary website a real MCP server. Require the response
+    to have actually started streaming as text/event-stream instead.
+    """
+    if not probe:
+        return False
+    if probe.get("status_code") != 200:
+        return False
+    return "text/event-stream" in (probe.get("content_type") or "").lower()
+
+
 def determine_recommended_mcp_endpoint(
     base_url: str,
     probe_results: Dict[str, Dict[str, Any]]
@@ -316,7 +336,7 @@ def determine_recommended_mcp_endpoint(
     if _is_real_endpoint_signal(mcp_probe):
         return f"{base_url}/mcp"
 
-    if _is_real_endpoint_signal(sse_probe):
+    if _is_real_sse_mcp_signal(sse_probe):
         return f"{base_url}/sse"
 
     # Default to /mcp convention
@@ -377,7 +397,12 @@ async def analyze_agent_url(url: str) -> Dict[str, Any]:
         async with httpx.AsyncClient(timeout=8.0) as client:
             has_mcp = await verify_mcp_handshake(client, normalized_url)
     if not has_mcp:
-        has_mcp = _is_real_endpoint_signal(sse_probe)
+        # No verification step exists for this path the way
+        # verify_mcp_handshake verifies /mcp - _is_real_sse_mcp_signal has
+        # to be strict on its own (see its docstring: generic 400/405/406
+        # from an unrelated framework on github.com/sse was mistaken for
+        # a real MCP server when this used the looser gate-only check).
+        has_mcp = _is_real_sse_mcp_signal(sse_probe)
 
     if has_mcp:
         recommended_mcp = determine_recommended_mcp_endpoint(normalized_url, endpoint_probes)
