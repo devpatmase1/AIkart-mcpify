@@ -31,6 +31,10 @@ router = APIRouter(prefix="", tags=["MCP Tools"])
 class PlatformEnum(str, Enum):
     claude_desktop = "claude_desktop"
     cursor = "cursor"
+    windsurf = "windsurf"
+    cline = "cline"
+    vscode = "vscode"
+    claude_code_cli = "claude_code_cli"
     web = "web"
 
 
@@ -50,7 +54,7 @@ class IntegrationGuideRequest(BaseModel):
     url: str = Field(..., description="The deployed agent URL")
     platform: PlatformEnum = Field(
         default=PlatformEnum.claude_desktop,
-        description="Target platform: 'claude_desktop', 'cursor', or 'web'"
+        description="Target platform: 'claude_desktop', 'cursor', 'windsurf', 'cline', 'vscode', 'claude_code_cli', or 'web'"
     )
 
 
@@ -120,6 +124,59 @@ async def run_guide(url: str, platform: str = "claude_desktop") -> Dict[str, Any
             ],
             "config_snippet": configs["cursor_vscode"]
         },
+        "windsurf": {
+            "platform": "Windsurf",
+            "config_file_location": {
+                "macOS / Linux": "~/.codeium/windsurf/mcp_config.json",
+                "Windows": "%USERPROFILE%\\.codeium\\windsurf\\mcp_config.json"
+            },
+            "steps": [
+                "1. Open Windsurf Settings > Cascade > MCP Servers > 'View raw config'.",
+                "2. Add the generated server config under the 'mcpServers' object key.",
+                "3. Save the file and click the refresh icon next to MCP Servers.",
+                "4. Verify the server shows a green/active status."
+            ],
+            "config_snippet": configs["windsurf"]
+        },
+        "cline": {
+            "platform": "Cline (VS Code extension)",
+            "config_file_location": {
+                "Path": "Cline panel > MCP Servers icon > 'Configure MCP Servers' (opens cline_mcp_settings.json)"
+            },
+            "steps": [
+                "1. Open the Cline panel in VS Code and click the MCP Servers icon.",
+                "2. Click 'Configure MCP Servers' to open its settings JSON.",
+                "3. Add the generated server config under the 'mcpServers' object key.",
+                "4. Save the file; Cline reloads the server automatically."
+            ],
+            "config_snippet": configs["cline"]
+        },
+        "vscode": {
+            "platform": "VS Code (native MCP / GitHub Copilot)",
+            "config_file_location": {
+                "Workspace": ".vscode/mcp.json",
+                "User": "Run 'MCP: Open User Configuration' from the Command Palette"
+            },
+            "steps": [
+                "1. Create or open .vscode/mcp.json in your workspace (or use the User configuration).",
+                "2. Add the generated server config under the 'servers' object key.",
+                "3. Save the file; click 'Start' above the server entry that appears.",
+                "4. Use the Chat view's tools picker to confirm the server is connected."
+            ],
+            "config_snippet": configs["vscode"]
+        },
+        "claude_code_cli": {
+            "platform": "Claude Code (CLI)",
+            "config_file_location": {
+                "Command": "Run in any terminal with the Claude Code CLI installed"
+            },
+            "steps": [
+                "1. Run the generated 'claude mcp add' command in your terminal.",
+                "2. Run 'claude mcp list' to confirm it was added.",
+                "3. Start a Claude Code session; the server's tools are available immediately."
+            ],
+            "config_snippet": configs["claude_code_cli"]
+        },
         "web": {
             "platform": "Custom Web / Agentic Frameworks",
             "config_file_location": {
@@ -160,16 +217,16 @@ async def mcp_tool_analyze_agent(url: str) -> Dict[str, Any]:
         return {"error": str(e)}
 
 
-@mcp.tool(name="generate_mcp_config", description="Generate ready-to-use MCP configuration JSON for Claude Desktop, Cursor, and VS Code.")
+@mcp.tool(name="generate_mcp_config", description="Generate ready-to-use MCP configuration JSON for Claude Desktop, Cursor, Windsurf, Cline, VS Code, and the Claude Code CLI.")
 async def mcp_tool_generate_mcp_config(url: str) -> Dict[str, Any]:
-    """Generates JSON configuration snippets for Claude Desktop, Cursor, and VS Code."""
+    """Generates JSON configuration snippets for Claude Desktop, Cursor, Windsurf, Cline, VS Code, and the Claude Code CLI."""
     try:
         return await run_generation(url)
     except ValueError as e:
         return {"error": str(e)}
 
 
-@mcp.tool(name="get_integration_guide", description="Get step-by-step setup guides for Claude Desktop, Cursor, or Web MCP clients.")
+@mcp.tool(name="get_integration_guide", description="Get step-by-step setup guides for Claude Desktop, Cursor, Windsurf, Cline, VS Code, Claude Code CLI, or generic Web/REST MCP clients.")
 async def mcp_tool_get_integration_guide(url: str, platform: str = "claude_desktop") -> Dict[str, Any]:
     """Returns platform-specific setup instructions and configuration paths."""
     try:

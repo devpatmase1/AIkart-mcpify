@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MCPify — Model Context Protocol Bridge & Config Generator</title>
-  <meta name="description" content="Turn any deployed AI Agent or REST API into a standardized Model Context Protocol (MCP) server for Claude Desktop, Cursor, and VS Code.">
+  <meta name="description" content="Turn any deployed AI Agent or REST API into a standardized Model Context Protocol (MCP) server for Claude Desktop, Cursor, Windsurf, Cline, VS Code, and the Claude Code CLI.">
   
   <!-- Fonts: Inter & JetBrains Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -856,7 +856,7 @@
       <section class="hero">
         <div class="hero-tag">⚡ Model Context Protocol Bridge</div>
         <h1>Generate MCP links for any AI Agent</h1>
-        <p>Turn any deployed agent or REST API into a standardized MCP server for Claude Desktop, Cursor, and VS Code in seconds.</p>
+        <p>Turn any deployed agent or REST API into a standardized MCP server for Claude Desktop, Cursor, Windsurf, Cline, VS Code, and the Claude Code CLI in seconds.</p>
       </section>
 
       <!-- Input Card -->
@@ -961,7 +961,19 @@
               <span>🤖 Claude Desktop</span>
             </button>
             <button class="tab-btn" id="tab-cursor" onclick="switchTab('cursor_vscode')">
-              <span>⚡ Cursor / VS Code</span>
+              <span>⚡ Cursor</span>
+            </button>
+            <button class="tab-btn" id="tab-windsurf" onclick="switchTab('windsurf')">
+              <span>🏄 Windsurf</span>
+            </button>
+            <button class="tab-btn" id="tab-cline" onclick="switchTab('cline')">
+              <span>🔧 Cline</span>
+            </button>
+            <button class="tab-btn" id="tab-vscode" onclick="switchTab('vscode')">
+              <span>🧩 VS Code</span>
+            </button>
+            <button class="tab-btn" id="tab-claude-code" onclick="switchTab('claude_code_cli')">
+              <span>⌨️ Claude Code CLI</span>
             </button>
             <button class="tab-btn" id="tab-remote" onclick="switchTab('remote_url')">
               <span>🌐 Remote URL (REST)</span>
@@ -1108,11 +1120,17 @@
       // Tab Buttons highlight
       document.getElementById('tab-claude').classList.toggle('active', tab === 'claude_desktop');
       document.getElementById('tab-cursor').classList.toggle('active', tab === 'cursor_vscode');
+      document.getElementById('tab-windsurf').classList.toggle('active', tab === 'windsurf');
+      document.getElementById('tab-cline').classList.toggle('active', tab === 'cline');
+      document.getElementById('tab-vscode').classList.toggle('active', tab === 'vscode');
+      document.getElementById('tab-claude-code').classList.toggle('active', tab === 'claude_code_cli');
       document.getElementById('tab-remote').classList.toggle('active', tab === 'remote_url');
 
       const codeBlock = document.getElementById('codeBlock');
       const guideContainer = document.getElementById('guideStepsContainer');
       const platformBadge = document.getElementById('guidePlatformBadge');
+      const langLabel = document.getElementById('configLangLabel');
+      langLabel.innerText = tab === 'claude_code_cli' ? 'Shell — Command' : 'JSON — Configuration Snippet';
 
       if (tab === 'claude_desktop') {
         codeBlock.innerText = JSON.stringify(configs.claude_desktop, null, 2);
@@ -1131,6 +1149,41 @@
           { text: "Navigate to Features > MCP." },
           { text: `Click 'Add New MCP Server'. Name: '${configs.server_name}', Type: 'sse', URL: '${configs.remote_mcp_url}'.` },
           { text: "Verify the green active status indicator indicator lights up." }
+        ]);
+      } else if (tab === 'windsurf') {
+        codeBlock.innerText = JSON.stringify(configs.windsurf, null, 2);
+        platformBadge.innerText = 'Windsurf';
+        renderGuideSteps([
+          { text: "Open Windsurf Settings > Cascade > MCP Servers > 'View raw config'.", location: '~/.codeium/windsurf/mcp_config.json' },
+          { text: "Add the generated server config under the 'mcpServers' object key." },
+          { text: "Save the file and click the refresh icon next to MCP Servers." },
+          { text: "Verify the server shows a green/active status." }
+        ]);
+      } else if (tab === 'cline') {
+        codeBlock.innerText = JSON.stringify(configs.cline, null, 2);
+        platformBadge.innerText = 'Cline (VS Code)';
+        renderGuideSteps([
+          { text: "Open the Cline panel in VS Code and click the MCP Servers icon." },
+          { text: "Click 'Configure MCP Servers' to open its settings JSON." },
+          { text: "Add the generated server config under the 'mcpServers' object key." },
+          { text: "Save the file; Cline reloads the server automatically." }
+        ]);
+      } else if (tab === 'vscode') {
+        codeBlock.innerText = JSON.stringify(configs.vscode, null, 2);
+        platformBadge.innerText = 'VS Code';
+        renderGuideSteps([
+          { text: "Create or open .vscode/mcp.json in your workspace." },
+          { text: "Add the generated server config under the 'servers' object key." },
+          { text: "Save the file; click 'Start' above the server entry that appears." },
+          { text: "Use the Chat view's tools picker to confirm the server is connected." }
+        ]);
+      } else if (tab === 'claude_code_cli') {
+        codeBlock.innerText = configs.claude_code_cli.command;
+        platformBadge.innerText = 'Claude Code CLI';
+        renderGuideSteps([
+          { text: "Run the command above in any terminal with the Claude Code CLI installed." },
+          { text: "Run 'claude mcp list' to confirm it was added." },
+          { text: "Start a Claude Code session; the server's tools are available immediately." }
         ]);
       } else if (tab === 'remote_url') {
         const remoteInfo = {
