@@ -32,9 +32,20 @@ async def verify_mcp_handshake(client: httpx.AsyncClient, base_url: str) -> bool
     Confirm a REAL MCP server by attempting the actual JSON-RPC
     "initialize" handshake and checking the response is JSON-RPC shaped,
     rather than trusting the GET probe's status code alone.
+
+    Streamed, not a plain client.post(): a spec-compliant streamable-HTTP
+    MCP server is allowed to answer with Content-Type: text/event-stream
+    and keep that connection open for further server-to-client messages
+    for the life of the session (verified live against DeepWiki's real
+    MCP server) - a buffered post() waits for the body to fully close
+    before resp.text is available, so it would hang until this function's
+    own timeout on exactly the servers it's trying to confirm, reporting
+    a real MCP server as not one. Read only a bounded prefix instead, the
+    same fix already applied to probe_sse_endpoint for the same reason.
     """
     try:
-        resp = await client.post(
+        async with client.stream(
+            "POST",
             f"{base_url}/mcp",
             json={
                 "jsonrpc": "2.0",
@@ -48,17 +59,23 @@ async def verify_mcp_handshake(client: httpx.AsyncClient, base_url: str) -> bool
             },
             headers={"Content-Type": "application/json", "Accept": "application/json, text/event-stream"},
             timeout=6.0,
-        )
-    except Exception:
-        return False
+        ) as resp:
+            if resp.status_code >= 400:
+                return False
+            if "html" in (resp.headers.get("content-type") or "").lower():
+                return False
 
-    if resp.status_code >= 400:
-        return False
-    if "html" in (resp.headers.get("content-type") or "").lower():
-        return False
-
-    try:
-        body_text = resp.text[:2000]
+            body_text = ""
+            try:
+                async def _read_prefix():
+                    nonlocal body_text
+                    async for chunk in resp.aiter_text():
+                        body_text += chunk
+                        if len(body_text) >= 2000 or ('"result"' in body_text or '"error"' in body_text):
+                            return
+                await asyncio.wait_for(_read_prefix(), timeout=5.0)
+            except Exception:
+                pass
     except Exception:
         return False
 
