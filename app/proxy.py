@@ -31,6 +31,34 @@ async def _revalidate_target_safety(target_url: str) -> Optional[str]:
     is_safe, reason = await is_public_url(target_url)
     return None if is_safe else reason
 
+
+def _parse_mcp_response_body(text: str, content_type: str) -> Optional[Dict[str, Any]]:
+    """
+    A real streamable-HTTP MCP server can legitimately answer a single
+    POST request either as plain JSON or SSE-framed
+    ("event: message\\ndata: {...}\\n\\n") - verified live that DeepWiki's
+    real MCP server uses SSE framing even for an ordinary tools/call, not
+    just a long-lived stream. A plain resp.json() silently fails on the
+    SSE-framed form (it isn't valid JSON on its own), which used to make
+    every call to such a server look like it failed and fall back to the
+    wrong generic REST-wrapper tools - has_mcp was detected correctly,
+    but the actual forwarding never worked for exactly the servers this
+    was meant to support.
+    """
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+    if "text/event-stream" in (content_type or "").lower():
+        for line in text.splitlines():
+            line = line.strip()
+            if line.startswith("data:"):
+                try:
+                    return json.loads(line[len("data:"):].strip())
+                except Exception:
+                    continue
+    return None
+
 REDIS_KEY_PREFIX = "mcpify:proxy:"
 REDIS_INDEX_PREFIX = "mcpify:proxy_by_url:"
 
@@ -233,7 +261,11 @@ class ProxyMCPManager:
         # If target has native /mcp, attempt forwarding direct MCP JSON-RPC call
         if has_mcp and await _revalidate_target_safety(target_url) is None:
             target_mcp_url = f"{target_url}/mcp"
-            headers = {"Content-Type": "application/json"}
+            # Accept must include text/event-stream, not just Content-Type:
+            # a spec-compliant streamable-HTTP server can refuse a request
+            # missing it (verified live: DeepWiki 406s a POST without this
+            # exact Accept header, same as its GET behavior).
+            headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
             if proxy.get("api_key"):
                 headers["Authorization"] = f"Bearer {proxy['api_key']}"
             try:
@@ -245,10 +277,9 @@ class ProxyMCPManager:
                     )
                     content_type = resp.headers.get("content-type", "")
                     if resp.status_code < 400 and "text/html" not in content_type:
-                        try:
-                            return resp.json()
-                        except Exception:
-                            pass
+                        parsed = _parse_mcp_response_body(resp.text, content_type)
+                        if parsed is not None:
+                            return parsed
             except Exception as e:
                 logger.warning("[ProxyMCP] Forwarding to native target /mcp failed: %s", e)
 
